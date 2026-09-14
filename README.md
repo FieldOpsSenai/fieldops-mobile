@@ -1,162 +1,121 @@
-# Contribuindo com o FieldOps Mobile
+# FieldOps Mobile
 
-Este documento define as convenções para desenvolvimento e contribuição no repositório `fieldops-mobile`.
+Aplicativo mobile da plataforma **FieldOps — Plataforma de Inspeção em Campo**.
 
-## Branch principal
+## Sobre o projeto
 
-A branch principal do projeto é:
+O `fieldops-mobile` é o aplicativo utilizado pelos técnicos em campo para realizar as atividades de inspeção da plataforma FieldOps.
 
-`main`
+O aplicativo se comunica com o `fieldops-api` através de uma API REST e não possui acesso direto ao banco de dados.
 
-A `main` deve permanecer estável e protegida.
+## Objetivo
 
-Alterações diretas na `main` não são permitidas.
+O aplicativo tem como objetivo fornecer aos técnicos uma interface para execução das atividades de campo, permitindo:
 
-## Branches
+* autenticação do técnico;
+* início e encerramento de sessões;
+* realização de inspeções;
+* preenchimento de informações durante as inspeções;
+* registro dos dados coletados em campo;
+* sincronização das informações com a API.
 
-As branches devem seguir os padrões:
+As funcionalidades serão implementadas conforme os PBIs definidos no backlog do projeto.
 
+## Arquitetura
+
+O aplicativo Mobile utiliza a API como intermediária para comunicação com os serviços e dados da plataforma.
+
+```text
+┌─────────────────────┐
+│   fieldops-mobile   │
+│    Expo + TypeScript│
+└──────────┬──────────┘
+           │
+           │ REST API
+           ▼
+┌─────────────────────┐
+│    fieldops-api     │
+│    Spring Boot      │
+└──────────┬──────────┘
+           │
+           │
+           ▼
+┌─────────────────────┐
+│     PostgreSQL      │
+└─────────────────────┘
 ```
-feature/PBI-XXX-descricao
-fix/PBI-XXX-descricao
-hotfix/PBI-XXX-descricao
-```
 
-### Feature
+O aplicativo **não acessa diretamente o banco de dados**.
 
-Para desenvolvimento de novas funcionalidades:
+Toda comunicação com os dados e regras de negócio deve ocorrer através do `fieldops-api`.
 
-```
-feature/PBI-XXX-descricao
-```
+## Tecnologias
 
-Exemplo:
+* Expo
+* React Native
+* TypeScript
+* Tailwind CSS
 
-```
+> As versões das tecnologias serão definidas durante a configuração do projeto.
+
+## Estrutura do projeto
+
+A estrutura interna será definida conforme a implementação do aplicativo.
+
+A organização deverá seguir uma estrutura modular, mantendo as funcionalidades separadas e facilitando a manutenção e evolução do projeto.
+
+## Configuração do ambiente
+
+As configurações específicas do ambiente devem ser mantidas fora do código-fonte.
+
+Informações sensíveis, como tokens, credenciais e chaves de acesso, **não devem ser versionadas no Git**.
+
+As variáveis necessárias para execução do aplicativo deverão ser documentadas através de um arquivo `.env.example` ou mecanismo equivalente.
+
+A URL da API utilizada pelo aplicativo deverá ser configurada conforme o ambiente de desenvolvimento.
+
+## Execução
+
+As instruções de instalação, configuração e execução serão adicionadas após a criação da estrutura inicial do projeto Expo.
+
+De forma geral, o projeto deverá utilizar o fluxo padrão de desenvolvimento do Expo.
+
+## Testes
+
+Os testes automatizados devem ser executados antes da abertura de um Pull Request.
+
+As instruções específicas para execução dos testes serão documentadas conforme a implementação do projeto.
+
+## Desenvolvimento
+
+O desenvolvimento deve seguir as convenções definidas pelo projeto FieldOps.
+
+As regras de branches, commits, Pull Requests e proteção da `main` estão documentadas em:
+
+`docs/CONTRIBUTING.md`
+
+Exemplo de branch:
+
+```text
 feature/PBI-008-iniciar-sessao-tecnico
 ```
 
-### Fix
+Exemplo de commit:
 
-Para correções de problemas:
-
-```
-fix/PBI-XXX-descricao
-```
-
-### Hotfix
-
-Para correções urgentes:
-
-```
-hotfix/PBI-XXX-descricao
-```
-
-## Commits
-
-Os commits devem seguir o padrão:
-
-```
-tipo(PBI-ID): descrição
-```
-
-Exemplos:
-
-```
+```text
 feat(PBI-008): inicia sessão do técnico
-fix(PBI-010): corrige sincronização offline
-refactor(PBI-011): reorganiza componente de checklist
-docs(PBI-001): atualiza documentação
 ```
 
-Tipos mais utilizados:
+## Documentação
 
-* `feat` — nova funcionalidade
-* `fix` — correção
-* `refactor` — refatoração
-* `docs` — documentação
-* `test` — testes
-* `chore` — manutenção/configuração
+A documentação específica do repositório está disponível no diretório `docs/`.
 
-## Pull Requests
+Para consultar as regras de contribuição e desenvolvimento:
 
-Toda alteração destinada à `main` deve passar por Pull Request.
+`docs/CONTRIBUTING.md`
 
-O fluxo padrão é:
+Documentações relacionadas ao desenvolvimento e às convenções gerais do projeto devem seguir os padrões definidos pelo FieldOps.
 
-```
-criar branch
-    ↓
-desenvolver
-    ↓
-commit
-    ↓
-push
-    ↓
-abrir Pull Request
-    ↓
-code review
-    ↓
-aprovação
-    ↓
-squash merge
-    ↓
-main
-```
+## Status
 
-### Regras da Pull Request
-
-A Pull Request deve:
-
-* Estar relacionada a um PBI quando aplicável.
-* Possuir descrição clara das alterações.
-* Informar o que foi implementado ou corrigido.
-* Passar por pelo menos 1 aprovação.
-* Ter todas as conversas resolvidas.
-* Utilizar **Squash and merge**.
-* Não permitir merge enquanto os requisitos de proteção da `main` não forem atendidos.
-
-## Proteção da main
-
-A branch `main` possui regras de proteção configuradas no GitHub.
-
-Atualmente:
-
-* Pull Request obrigatório.
-* 1 aprovação obrigatória.
-* Aprovação mais recente obrigatória após novos commits.
-* Aprovações anteriores podem ser invalidadas quando novos commits são enviados.
-* Conversas devem estar resolvidas.
-* Force push bloqueado.
-* Exclusão da branch bloqueada.
-* Apenas Squash merge permitido.
-
-Checks automáticos de CI ainda não são obrigatórios neste momento, pois o pipeline será configurado posteriormente.
-
-## Boas práticas
-
-* Manter branches pequenas e focadas.
-* Evitar commits sem relação com o PBI.
-* Não fazer alterações diretamente na `main`.
-* Não utilizar `force push` em branches compartilhadas.
-* Manter mensagens de commit claras.
-* Atualizar a documentação quando necessário.
-* Evitar incluir arquivos de ambiente ou credenciais no repositório.
-
-## Relação com PBIs
-
-Sempre que possível, a branch, os commits e a Pull Request devem permitir identificar o PBI relacionado.
-
-Exemplo:
-
-```
-PBI-008
-  ↓
-feature/PBI-008-iniciar-sessao-tecnico
-  ↓
-feat(PBI-008): cria tela de login
-  ↓
-Pull Request
-  ↓
-main
-```
+Em desenvolvimento.
