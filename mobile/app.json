@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "Offline First",
+    "slug": "expo-java-offline-first",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "platforms": [
+      "android",
+      "ios",
+      "web"
+    ],
+    "web": {
+      "bundler": "metro"
+    },
+    "android": {
+      "package": "com.exemplo.offlinefirst"
+    },
+    "ios": {
+      "bundleIdentifier": "com.exemplo.offlinefirst"
+    }
+  }
+}
