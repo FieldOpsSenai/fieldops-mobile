@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Offline First",
-    "slug": "expo-java-offline-first",
+    "name": "FieldOps",
+    "slug": "fieldops-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
@@ -14,10 +14,37 @@
       "bundler": "metro"
     },
     "android": {
-      "package": "com.exemplo.offlinefirst"
+      "package": "com.fieldops.mobile",
+      "permissions": [
+        "CAMERA",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
     },
     "ios": {
-      "bundleIdentifier": "com.exemplo.offlinefirst"
-    }
+      "bundleIdentifier": "com.fieldops.mobile",
+      "infoPlist": {
+        "NSCameraUsageDescription": "FieldOps precisa de acesso à câmera para ler QR Codes de equipamentos e registrar fotos de evidências.",
+        "NSLocationWhenInUseUsageDescription": "FieldOps precisa da sua localização para comprovar a presença no início e término da inspeção."
+      }
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Permitir que o FieldOps acesse a câmera para escanear QR Code e capturar evidências."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Permitir que o FieldOps acesse sua localização durante a execução da inspeção."
+        }
+      ],
+      "expo-sqlite",
+      "expo-status-bar"
+    ]
   }
 }
