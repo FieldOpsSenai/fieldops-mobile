@@ -1,466 +1,267 @@
-import '@expo/metro-runtime';
-
-import { useEffect, useRef, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  SafeAreaView,
-  ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
   View,
+  ActivityIndicator,
+  SafeAreaView,
+  Text,
+  Alert,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { Ionicons } from '@expo/vector-icons';
 import NetInfo from '@react-native-community/netinfo';
-import { Feather } from '@expo/vector-icons';
+import { colors } from './src/theme';
+import { initDatabase, getSyncStats, getInspectionById } from './src/database';
+import { Inspection, User } from './src/types';
+import { Header } from './src/components/Header';
+import { BottomTabs, TabKey } from './src/components/BottomTabs';
+import { LoginScreen } from './src/features/auth/LoginScreen';
+import { DashboardScreen } from './src/features/dashboard/DashboardScreen';
+import { InspectionsListScreen } from './src/features/inspections/InspectionsListScreen';
+import { ScheduleScreen } from './src/features/inspections/ScheduleScreen';
+import { SyncOutboxScreen } from './src/features/sync/SyncOutboxScreen';
+import { InspectionDetailScreen } from './src/features/inspections/InspectionDetailScreen';
+import { DynamicChecklistScreen } from './src/features/checklist/DynamicChecklistScreen';
+import { SummaryCompleteScreen } from './src/features/checklist/SummaryCompleteScreen';
 
-import {
-  buscarUsuarioPorEmail,
-  initDatabase,
-  inserirUsuario,
-  marcarComoSincronizado,
-  validarCredenciais,
-} from './src/database';
-import { listarUsuariosRemotos } from './src/api';
-import { sincronizarPendentes } from './src/sync';
-import OverviewDashboard from './src/screens/OverviewDashboard';
+type ScreenView =
+  | 'MAIN_TABS'
+  | 'INSPECTION_DETAIL'
+  | 'DYNAMIC_CHECKLIST'
+  | 'SUMMARY_COMPLETE';
 
 export default function App() {
-  const [autenticado, setAutenticado] = useState(false);
-  const [email, setEmail] = useState('');
-  const [senha, setSenha] = useState('');
-  const [carregando, setCarregando] = useState(false);
-  const [pronto, setPronto] = useState(false);
-  const [mostrarSenha, setMostrarSenha] = useState(false);
+  const [dbReady, setDbReady] = useState(false);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [activeTab, setActiveTab] = useState<TabKey>('dashboard');
+  const [currentView, setCurrentView] = useState<ScreenView>('MAIN_TABS');
+  const [selectedInspection, setSelectedInspection] = useState<Inspection | null>(null);
+  const [pendingSyncCount, setPendingSyncCount] = useState(0);
+  const [isOnline, setIsOnline] = useState(true);
 
-  const sincronizandoRef = useRef(false);
-
-  async function sincronizar(mostrarMensagem = false) {
-    if (sincronizandoRef.current) {
-      return;
-    }
-
-    try {
-      sincronizandoRef.current = true;
-      const resultado = await sincronizarPendentes();
-
-      if (mostrarMensagem) {
-        Alert.alert(
-          'Sincronização',
-          `Pendentes: ${resultado.total}\n` +
-            `Sincronizados: ${resultado.sincronizados}\n` +
-            `Erros: ${resultado.erros}`
-        );
-      }
-    } finally {
-      sincronizandoRef.current = false;
-    }
-  }
-
+  // Inicializa o banco SQLite
   useEffect(() => {
-    let ativo = true;
-    let unsubscribe: (() => void) | undefined;
-
-    async function iniciar() {
+    async function setup() {
       try {
         await initDatabase();
-
-        if (!ativo) {
-          return;
-        }
-
-        setPronto(true);
-
-        unsubscribe = NetInfo.addEventListener((state) => {
-          const conectado =
-            state.isConnected === true &&
-            state.isInternetReachable !== false;
-
-          if (conectado) {
-            void sincronizar(false);
-          }
-        });
-
-        const rede = await NetInfo.fetch();
-        const conectado =
-          rede.isConnected === true &&
-          rede.isInternetReachable !== false;
-
-        if (conectado) {
-          void sincronizar(false);
-        }
-      } catch (error) {
-        console.error('Erro ao inicializar banco SQLite:', error);
+        const stats = await getSyncStats();
+        setPendingSyncCount(stats.pending);
+        setDbReady(true);
+      } catch (err) {
+        console.error('Falha ao iniciar SQLite:', err);
       }
     }
+    setup();
 
-    void iniciar();
+    const unsubscribe = NetInfo.addEventListener((state) => {
+      setIsOnline(Boolean(state.isConnected));
+    });
 
-    return () => {
-      ativo = false;
-      unsubscribe?.();
-    };
+    return () => unsubscribe();
   }, []);
 
-  async function handleLogin() {
-    const emailLimpo = email.trim();
-    const senhaLimpa = senha.trim();
-
-    if (!emailLimpo) {
-      Alert.alert('Campo Obrigatório', 'Por favor, informe seu e-mail corporativo.');
-      return;
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(emailLimpo)) {
-      Alert.alert('E-mail Inválido', 'Por favor, informe um endereço de e-mail corporativo válido.');
-      return;
-    }
-
-    if (!senhaLimpa) {
-      Alert.alert('Campo Obrigatório', 'Por favor, informe sua senha de acesso.');
-      return;
-    }
-
+  const refreshSyncBadge = async () => {
     try {
-      setCarregando(true);
-
-      // 1. Tentar validar diretamente no SQLite local
-      let usuarioAutenticado = await validarCredenciais(emailLimpo, senhaLimpa);
-
-      // 2. Se não encontrar no banco local e houver conectividade, tentar consultar usuários na API
-      if (!usuarioAutenticado) {
-        const rede = await NetInfo.fetch();
-        const conectado =
-          rede.isConnected === true &&
-          rede.isInternetReachable !== false;
-
-        if (conectado) {
-          try {
-            const remotos = await listarUsuariosRemotos();
-            if (Array.isArray(remotos)) {
-              for (const remoto of remotos) {
-                if (remoto.email?.trim().toLowerCase() === emailLimpo.toLowerCase()) {
-                  const usuarioLocal = await buscarUsuarioPorEmail(remoto.email);
-                  if (!usuarioLocal) {
-                    await inserirUsuario(remoto.id, remoto.email, remoto.senha ?? '');
-                    await marcarComoSincronizado(remoto.id);
-                  }
-                }
-              }
-              // Valida novamente após atualizar banco local
-              usuarioAutenticado = await validarCredenciais(emailLimpo, senhaLimpa);
-            }
-          } catch (syncError) {
-            console.log('Não foi possível consultar usuários remotos:', syncError);
-          }
-        }
-      }
-
-      // 3. Se credenciais não conferem ou usuário não foi encontrado
-      if (!usuarioAutenticado) {
-        Alert.alert(
-          'Credenciais Inválidas',
-          'E-mail corporativo ou senha incorretos. Por favor, verifique seus dados.'
-        );
-        return;
-      }
-
-      // 4. Sucesso: dispara sincronização de pendências em segundo plano se online
-      const rede = await NetInfo.fetch();
-      const conectado =
-        rede.isConnected === true &&
-        rede.isInternetReachable !== false;
-
-      if (conectado) {
-        void sincronizar(false);
-      }
-
-      setAutenticado(true);
-    } catch (error) {
-      Alert.alert(
-        'Erro na Autenticação',
-        'Não foi possível concluir o login. Tente novamente.'
-      );
-      console.error(error);
-    } finally {
-      setCarregando(false);
+      const stats = await getSyncStats();
+      setPendingSyncCount(stats.pending);
+    } catch (err) {
+      console.log('Erro ao atualizar badge de sync:', err);
     }
-  }
+  };
 
-  function handleEsqueciSenha() {
-    Alert.alert(
-      'Redefinição de Senha',
-      'Um link para redefinição de senha foi enviado para o e-mail corporativo cadastrado.'
+  const handleSelectInspection = (inspection: Inspection) => {
+    setSelectedInspection(inspection);
+    setCurrentView('INSPECTION_DETAIL');
+  };
+
+  const handleOpenChecklist = (inspection: Inspection) => {
+    setSelectedInspection(inspection);
+    setCurrentView('DYNAMIC_CHECKLIST');
+  };
+
+  const handleOpenSummary = (inspection: Inspection) => {
+    setSelectedInspection(inspection);
+    setCurrentView('SUMMARY_COMPLETE');
+  };
+
+  const handleBackToDetail = async () => {
+    if (selectedInspection) {
+      const refreshed = await getInspectionById(selectedInspection.id);
+      if (refreshed) setSelectedInspection(refreshed);
+    }
+    setCurrentView('INSPECTION_DETAIL');
+    refreshSyncBadge();
+  };
+
+  const handleBackToTabs = async () => {
+    setCurrentView('MAIN_TABS');
+    refreshSyncBadge();
+  };
+
+  const handleLogout = () => {
+    Alert.alert('Encerrar Sessão', 'Deseja realmente sair da conta?', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Sair',
+        style: 'destructive',
+        onPress: () => {
+          setCurrentUser(null);
+          setCurrentView('MAIN_TABS');
+          setActiveTab('dashboard');
+        },
+      },
+    ]);
+  };
+
+  if (!dbReady) {
+    return (
+      <View style={styles.splashContainer}>
+        <StatusBar style="light" />
+        <View style={styles.splashLogoBox}>
+          <Ionicons name="shield-checkmark" size={52} color="#FFFFFF" />
+          <Text style={styles.splashBrand}>FieldOps</Text>
+          <Text style={styles.splashBrandSub}>TECHNICAL INSPECTION</Text>
+        </View>
+        <ActivityIndicator size="large" color="#FFFFFF" style={{ marginTop: 40 }} />
+        <Text style={styles.splashLoadingText}>Inicializando banco local...</Text>
+      </View>
     );
   }
 
-  if (autenticado) {
+  // Se o usuário ainda não logou, renderiza a tela de Login
+  if (!currentUser) {
     return (
-      <OverviewDashboard
-        onLogout={() => {
-          setAutenticado(false);
-          setSenha('');
-        }}
-      />
+      <View style={styles.container}>
+        <StatusBar style="dark" />
+        <LoginScreen onLoginSuccess={(user) => setCurrentUser(user)} />
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.container}>
       <StatusBar style="dark" />
-      <KeyboardAvoidingView
-        style={styles.keyboardContainer}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Card Principal */}
-          <View style={styles.card}>
-            {/* Logo com borda suave */}
-            <View style={styles.logoContainer}>
-              <Image
-                source={require('./assets/logo.png')}
-                style={styles.logoImage}
-                resizeMode="contain"
-              />
-            </View>
 
-            {/* Cabeçalho */}
-            <Text style={styles.title}>FieldOps Portal</Text>
-            <Text style={styles.subtitle}>Inspeção e Controle Técnico</Text>
+      {/* Main Header (Visível nas abas principais) */}
+      {currentView === 'MAIN_TABS' && (
+        <Header
+          isOnline={isOnline}
+          syncPendingCount={pendingSyncCount}
+          userName={currentUser.name}
+          onSyncPress={() => setActiveTab('sync')}
+          onLogout={handleLogout}
+        />
+      )}
 
-            {/* Formulário */}
-            <View style={styles.form}>
-              {/* Campo: E-mail Corporativo */}
-              <View style={styles.fieldGroup}>
-                <Text style={styles.label}>E-mail Corporativo</Text>
-                <View style={styles.inputContainer}>
-                  <Feather
-                    name="mail"
-                    size={18}
-                    color="#4b5563"
-                    style={styles.inputIcon}
-                  />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="tecnico@fieldops.com"
-                    placeholderTextColor="#9ca3af"
-                    value={email}
-                    onChangeText={setEmail}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                  />
-                </View>
-              </View>
+      {/* Screen Router */}
+      <View style={styles.screenContainer}>
+        {currentView === 'MAIN_TABS' && activeTab === 'dashboard' && (
+          <DashboardScreen
+            onSelectInspection={handleSelectInspection}
+            onNavigateTab={(tab) => setActiveTab(tab)}
+          />
+        )}
 
-              {/* Campo: Senha */}
-              <View style={styles.fieldGroup}>
-                <Text style={styles.label}>Senha</Text>
-                <View style={styles.inputContainer}>
-                  <Feather
-                    name="lock"
-                    size={18}
-                    color="#4b5563"
-                    style={styles.inputIcon}
-                  />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="••••••••"
-                    placeholderTextColor="#9ca3af"
-                    value={senha}
-                    onChangeText={setSenha}
-                    secureTextEntry={!mostrarSenha}
-                    autoCapitalize="none"
-                  />
-                  <TouchableOpacity
-                    onPress={() => setMostrarSenha(!mostrarSenha)}
-                    style={styles.eyeButton}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    <Feather
-                      name={mostrarSenha ? 'eye-off' : 'eye'}
-                      size={16}
-                      color="#9ca3af"
-                    />
-                  </TouchableOpacity>
-                </View>
+        {currentView === 'MAIN_TABS' && activeTab === 'inspections' && (
+          <InspectionsListScreen onSelectInspection={handleSelectInspection} />
+        )}
 
-                {/* Link Esqueci minha senha */}
-                <TouchableOpacity
-                  onPress={handleEsqueciSenha}
-                  style={styles.forgotPasswordContainer}
-                >
-                  <Text style={styles.forgotPasswordText}>
-                    Esqueci minha senha
-                  </Text>
-                </TouchableOpacity>
-              </View>
+        {currentView === 'MAIN_TABS' && activeTab === 'schedule' && (
+          <ScheduleScreen onSelectInspection={handleSelectInspection} />
+        )}
 
-              {/* Botão Entrar (#004d4d) */}
-              <TouchableOpacity
-                style={[styles.button, (!pronto || carregando) && styles.buttonDisabled]}
-                onPress={handleLogin}
-                activeOpacity={0.85}
-                disabled={!pronto || carregando}
-              >
-                {carregando ? (
-                  <ActivityIndicator color="#ffffff" size="small" />
-                ) : (
-                  <Text style={styles.buttonText}>Entrar</Text>
-                )}
-              </TouchableOpacity>
+        {currentView === 'MAIN_TABS' && activeTab === 'sync' && (
+          <SyncOutboxScreen onSyncCompleted={refreshSyncBadge} />
+        )}
 
-              {/* Rodapé do Card com a Versão */}
-              <Text style={styles.versionText}>
-                Versão 2.4.1 (Build 890)
-              </Text>
-            </View>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+        {currentView === 'INSPECTION_DETAIL' && selectedInspection && (
+          <InspectionDetailScreen
+            inspection={selectedInspection}
+            onBack={handleBackToTabs}
+            onOpenChecklist={handleOpenChecklist}
+            onOpenSummary={handleOpenSummary}
+            onRefreshInspection={(updated) => setSelectedInspection(updated)}
+          />
+        )}
+
+        {currentView === 'DYNAMIC_CHECKLIST' && selectedInspection && (
+          <DynamicChecklistScreen
+            inspection={selectedInspection}
+            onBack={handleBackToDetail}
+            onProceedToSummary={handleOpenSummary}
+          />
+        )}
+
+        {currentView === 'SUMMARY_COMPLETE' && selectedInspection && (
+          <SummaryCompleteScreen
+            inspection={selectedInspection}
+            onBack={handleBackToDetail}
+            onFinishComplete={() => {
+              handleBackToTabs();
+            }}
+          />
+        )}
+      </View>
+
+      {/* Bottom Tabs (Somente nas abas principais) */}
+      {currentView === 'MAIN_TABS' && (
+        <BottomTabs
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          pendingCount={pendingSyncCount}
+        />
+      )}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  container: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#FFFFFF',
   },
-  keyboardContainer: {
+  splashContainer: {
     flex: 1,
-    backgroundColor: '#ffffff',
-  },
-  scrollContent: {
-    flexGrow: 1,
-    justifyContent: 'center',
+    backgroundColor: colors.primary,
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 32,
-    backgroundColor: '#ffffff',
-  },
-  card: {
-    width: '100%',
-    maxWidth: 360,
-    backgroundColor: '#ffffff',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    paddingHorizontal: 28,
-    paddingTop: 36,
-    paddingBottom: 28,
-    // Sombra suave para iOS e Android
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  logoContainer: {
-    width: 110,
-    height: 110,
-    alignSelf: 'center',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    backgroundColor: '#f8fafc',
     justifyContent: 'center',
+  },
+  splashLogoBox: {
     alignItems: 'center',
-    marginBottom: 20,
-    overflow: 'hidden',
+    gap: 6,
   },
-  logoImage: {
-    width: '100%',
-    height: '100%',
+  splashBrand: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.5,
   },
-  title: {
-    fontSize: 22,
+  splashBrandSub: {
+    fontSize: 11,
     fontWeight: '700',
-    color: '#111827',
-    textAlign: 'center',
-    marginBottom: 6,
-    letterSpacing: -0.3,
+    color: 'rgba(255,255,255,0.7)',
+    letterSpacing: 2,
   },
-  subtitle: {
-    fontSize: 14,
-    color: '#4b5563',
-    textAlign: 'center',
-    marginBottom: 28,
-  },
-  form: {
-    width: '100%',
-  },
-  fieldGroup: {
-    marginBottom: 16,
-  },
-  label: {
+  splashLoadingText: {
+    marginTop: 12,
     fontSize: 13,
-    fontWeight: '600',
-    color: '#1f2937',
-    marginBottom: 6,
+    color: 'rgba(255,255,255,0.7)',
+    fontWeight: '500',
   },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1.2,
-    borderColor: '#374151',
-    borderRadius: 4,
-    height: 46,
-    paddingHorizontal: 12,
-    backgroundColor: '#ffffff',
-  },
-  inputIcon: {
-    marginRight: 10,
-  },
-  input: {
+  loadingContainer: {
     flex: 1,
-    height: '100%',
-    fontSize: 14,
-    color: '#111827',
-    padding: 0,
-  },
-  eyeButton: {
-    paddingLeft: 6,
-  },
-  forgotPasswordContainer: {
-    alignSelf: 'flex-end',
-    marginTop: 8,
-  },
-  forgotPasswordText: {
-    color: '#005959',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  button: {
-    backgroundColor: '#004d4d',
-    borderRadius: 4,
-    height: 48,
-    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
-    marginTop: 20,
-    marginBottom: 24,
+    justifyContent: 'center',
   },
-  buttonDisabled: {
-    opacity: 0.65,
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: colors.textSecondary,
+    fontWeight: '500',
   },
-  buttonText: {
-    color: '#ffffff',
-    fontSize: 15,
-    fontWeight: '700',
-    letterSpacing: 0.2,
-  },
-  versionText: {
-    textAlign: 'center',
-    fontSize: 12,
-    color: '#6b7280',
+  screenContainer: {
+    flex: 1,
+    backgroundColor: colors.background,
   },
 });
