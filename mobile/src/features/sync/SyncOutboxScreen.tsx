@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -65,11 +65,14 @@ export const SyncOutboxScreen: React.FC<SyncOutboxScreenProps> = ({ onSyncComple
           'O dispositivo está desconectado da internet. Seus dados continuam gravados com total segurança no SQLite local.'
         );
       } else if (res.total === 0) {
-        Alert.alert('Fila Vazia', 'Todas as alterações já estão sincronizadas com o servidor.');
+        Alert.alert(
+          'Sincronização Atualizada',
+          `Fila Outbox vazia. Dados sincronizados com a API (${res.pulledInspections ?? 0} inspeção(ões) no servidor).`
+        );
       } else {
         Alert.alert(
           'Sincronização Concluída',
-          `Total processado: ${res.total}\nSucessos: ${res.synced}\nFalhas: ${res.failed}`
+          `Eventos enviados: ${res.total}\nSucessos: ${res.synced}\nFalhas: ${res.failed}\nInspeções sincronizadas da API: ${res.pulledInspections ?? 0}`
         );
       }
     } catch (err: any) {
@@ -181,7 +184,13 @@ export const SyncOutboxScreen: React.FC<SyncOutboxScreenProps> = ({ onSyncComple
                 <Text style={styles.recordId}>UUID: {rec.id}</Text>
 
                 {rec.error_message && (
-                  <Text style={styles.recordError}>Erro: {rec.error_message}</Text>
+                  <Text style={styles.recordError}>
+                    Erro:{' '}
+                    {rec.error_message
+                      .replace(/\s*\(HTTP\s*\d+\)/gi, '')
+                      .replace(/Servidor retornou HTTP\s*\d+\s*/gi, 'Não foi possível ')
+                      .trim()}
+                  </Text>
                 )}
 
                 <View style={styles.recordFooter}>

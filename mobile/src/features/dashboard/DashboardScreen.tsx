@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import { colors } from '../../theme';
 import { Badge } from '../../components/Badge';
 import { Inspection } from '../../types';
 import { getInspections, getSyncStats } from '../../database';
+import { pullServerData } from '../../sync';
 
 interface DashboardScreenProps {
   onSelectInspection: (inspection: Inspection) => void;
@@ -57,6 +58,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
 
   const handleRefresh = async () => {
     setRefreshing(true);
+    await pullServerData();
     await loadData();
     setRefreshing(false);
   };

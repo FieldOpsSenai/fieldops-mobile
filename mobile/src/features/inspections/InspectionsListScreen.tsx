@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import { colors } from '../../theme';
 import { Badge } from '../../components/Badge';
 import { Inspection } from '../../types';
 import { getInspections } from '../../database';
+import { pullServerData } from '../../sync';
 
 interface InspectionsListScreenProps {
   onSelectInspection: (inspection: Inspection) => void;
@@ -41,6 +42,7 @@ export const InspectionsListScreen: React.FC<InspectionsListScreenProps> = ({
 
   const handleRefresh = async () => {
     setRefreshing(true);
+    await pullServerData();
     await fetchInspections();
     setRefreshing(false);
   };
