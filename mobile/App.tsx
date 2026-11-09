@@ -12,6 +12,8 @@ import { Ionicons } from '@expo/vector-icons';
 import NetInfo from '@react-native-community/netinfo';
 import { colors } from './src/theme';
 import { initDatabase, getSyncStats, getInspectionById } from './src/database';
+import { loadSessionTokens, logoutFromApi } from './src/api';
+import { pullServerData } from './src/sync';
 import { Inspection, User } from './src/types';
 import { Header } from './src/components/Header';
 import { BottomTabs, TabKey } from './src/components/BottomTabs';
@@ -39,11 +41,16 @@ export default function App() {
   const [pendingSyncCount, setPendingSyncCount] = useState(0);
   const [isOnline, setIsOnline] = useState(true);
 
-  // Inicializa o banco SQLite
+  // Inicializa o banco SQLite e restaura sessão
   useEffect(() => {
     async function setup() {
       try {
         await initDatabase();
+        const savedUser = await loadSessionTokens();
+        if (savedUser) {
+          setCurrentUser(savedUser);
+          await pullServerData(savedUser.id);
+        }
         const stats = await getSyncStats();
         setPendingSyncCount(stats.pending);
         setDbReady(true);
@@ -104,7 +111,8 @@ export default function App() {
       {
         text: 'Sair',
         style: 'destructive',
-        onPress: () => {
+        onPress: async () => {
+          await logoutFromApi();
           setCurrentUser(null);
           setCurrentView('MAIN_TABS');
           setActiveTab('dashboard');

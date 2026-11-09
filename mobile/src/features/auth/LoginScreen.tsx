@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -13,7 +13,9 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../theme';
 import { User } from '../../types';
-import { authenticateUser } from '../../database';
+import { authenticateUser, upsertOfflineUser, saveAuthSession } from '../../database';
+import { loginWithApi } from '../../api';
+import { pullServerData } from '../../sync';
 
 interface LoginScreenProps {
   onLoginSuccess: (user: User) => void;
@@ -21,7 +23,7 @@ interface LoginScreenProps {
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
   const [email, setEmail] = useState('tecnico@fieldops.com');
-  const [password, setPassword] = useState('fieldops123');
+  const [password, setPassword] = useState('123456');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -35,15 +37,34 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
       setLoading(true);
       setErrorMessage(null);
 
-      const user = await authenticateUser(email, password);
+      // 1. Tenta autenticar diretamente na API Spring Boot (/api/v1/auth/login)
+      try {
+        const apiUser = await loginWithApi(email, password);
+        await upsertOfflineUser(apiUser, password.trim());
+        await pullServerData(apiUser.id);
+        onLoginSuccess(apiUser);
+        return;
+      } catch (apiErr: any) {
+        if (apiErr.message === 'INVALID_CREDENTIALS') {
+          setErrorMessage('Credenciais inválidas. Verifique o e-mail e a senha.');
+          return;
+        }
+        console.log('[Auth] API indisponível, utilizando autenticação offline SQLite:', apiErr.message);
+      }
 
-      if (user) {
-        onLoginSuccess(user);
+      // 2. Fallback Offline no SQLite caso o servidor esteja inacessível
+      const localUser = await authenticateUser(email, password);
+
+      if (localUser) {
+        await saveAuthSession(localUser);
+        onLoginSuccess(localUser);
       } else {
-        setErrorMessage('Credenciais inválidas. Verifique o e-mail e a senha.');
+        setErrorMessage(
+          'Servidor inacessível e credenciais não encontradas no banco offline local.'
+        );
       }
     } catch (err: any) {
-      Alert.alert('Erro ao entrar', err.message || 'Falha de autenticação local.');
+      Alert.alert('Erro ao entrar', err.message || 'Falha de autenticação.');
     } finally {
       setLoading(false);
     }
