@@ -1,0 +1,54 @@
+name: Mobile CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mobile/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "mobile/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Type-check and Android bundle
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate mobile application
+        shell: bash
+        run: |
+          if [[ ! -f mobile/package.json || ! -f mobile/package-lock.json ]]; then
+            echo "::error::mobile/package.json and mobile/package-lock.json are required to run Mobile CI."
+            exit 1
+          fi
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install dependencies
+        working-directory: mobile
+        run: npm ci
+
+      - name: Run TypeScript checks
+        working-directory: mobile
+        run: npx tsc --noEmit
+
+      - name: Export Android bundle
+        working-directory: mobile
+        run: npx expo export --platform android

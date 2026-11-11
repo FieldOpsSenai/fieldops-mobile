@@ -82,9 +82,7 @@ De forma geral, o projeto deverá utilizar o fluxo padrão de desenvolvimento do
 
 ## Testes
 
-Os testes automatizados devem ser executados antes da abertura de um Pull Request.
-
-As instruções específicas para execução dos testes serão documentadas conforme a implementação do projeto.
+O workflow `Mobile CI` é executado em Pull Requests para `main` e em alterações na `main` que afetem `mobile/`. Também pode ser executado manualmente. Ele exige `mobile/package.json` e `mobile/package-lock.json`, instala as dependências com `npm ci`, verifica os tipos TypeScript e exporta o bundle Android do Expo. Se os arquivos necessários estiverem ausentes, o CI falha explicitamente em vez de ignorar as verificações.
 
 ## Desenvolvimento
 
