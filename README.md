@@ -82,9 +82,7 @@ De forma geral, o projeto deverá utilizar o fluxo padrão de desenvolvimento do
 
 ## Testes
 
-O workflow `Mobile CI` é executado em Pull Requests para `main` e em alterações na `main` que afetem `mobile/`. Quando a branch contém o aplicativo, o workflow instala as dependências, verifica os tipos TypeScript e exporta o bundle Android do Expo.
-
-Atualmente a branch `main` ainda não contém o diretório `mobile/`; nesse caso, as verificações do aplicativo são ignoradas até que ele esteja presente. A branch de desenvolvimento que adiciona o app Expo já pode ser validada por esse workflow ao abrir um Pull Request para `main`.
+O workflow `Mobile CI` é executado em Pull Requests para `main` e em alterações na `main` que afetem `mobile/`. Também pode ser executado manualmente. Ele exige `mobile/package.json` e `mobile/package-lock.json`, instala as dependências com `npm ci`, verifica os tipos TypeScript e exporta o bundle Android do Expo. Se os arquivos necessários estiverem ausentes, o CI falha explicitamente em vez de ignorar as verificações.
 
 ## Desenvolvimento
 

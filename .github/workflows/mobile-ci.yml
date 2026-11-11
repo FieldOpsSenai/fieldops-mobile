@@ -5,12 +5,10 @@ on:
     branches: [main]
     paths:
       - "mobile/**"
-      - ".github/workflows/mobile-ci.yml"
   pull_request:
     branches: [main]
     paths:
       - "mobile/**"
-      - ".github/workflows/mobile-ci.yml"
   workflow_dispatch:
 
 permissions:
@@ -28,19 +26,15 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Detect mobile application
-        id: app
+      - name: Validate mobile application
         shell: bash
         run: |
-          if [[ -f mobile/package.json && -f mobile/package-lock.json ]]; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::No mobile app or npm lockfile exists in this branch; mobile checks are skipped."
+          if [[ ! -f mobile/package.json || ! -f mobile/package-lock.json ]]; then
+            echo "::error::mobile/package.json and mobile/package-lock.json are required to run Mobile CI."
+            exit 1
           fi
 
       - name: Set up Node.js
-        if: steps.app.outputs.available == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -48,16 +42,13 @@ jobs:
           cache-dependency-path: mobile/package-lock.json
 
       - name: Install dependencies
-        if: steps.app.outputs.available == 'true'
         working-directory: mobile
         run: npm ci
 
       - name: Run TypeScript checks
-        if: steps.app.outputs.available == 'true'
         working-directory: mobile
         run: npx tsc --noEmit
 
       - name: Export Android bundle
-        if: steps.app.outputs.available == 'true'
         working-directory: mobile
         run: npx expo export --platform android
