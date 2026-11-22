@@ -12,7 +12,7 @@ import {
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../theme';
-import { Badge } from '../../components/Badge';
+import { Badge, formatCriticalityLabel } from '../../components/Badge';
 import { Inspection, ChecklistItemWithAnswer } from '../../types';
 import {
   getChecklistWithAnswers,
@@ -44,6 +44,22 @@ export const SummaryCompleteScreen: React.FC<SummaryCompleteScreenProps> = ({
 
   const missingRequired = items.filter((i) => i.required === 1 && !i.answer?.value);
   const totalEvidences = items.reduce((acc, curr) => acc + curr.evidences.length, 0);
+
+  const formatDateTime = (iso?: string | null) => {
+    if (!iso) return 'Horário não informado';
+    try {
+      const dt = new Date(iso);
+      if (isNaN(dt.getTime())) return iso;
+      const dd = String(dt.getDate()).padStart(2, '0');
+      const mm = String(dt.getMonth() + 1).padStart(2, '0');
+      const yyyy = dt.getFullYear();
+      const hh = String(dt.getHours()).padStart(2, '0');
+      const min = String(dt.getMinutes()).padStart(2, '0');
+      return `${dd}/${mm}/${yyyy} às ${hh}:${min}`;
+    } catch {
+      return iso;
+    }
+  };
 
   const handleComplete = async () => {
     if (missingRequired.length > 0) {
@@ -144,17 +160,50 @@ export const SummaryCompleteScreen: React.FC<SummaryCompleteScreenProps> = ({
             </View>
 
             <View style={styles.nonConformBody}>
-              {nonConformItems.map((nc) => (
-                <View key={nc.id} style={styles.ncItem}>
-                  <Ionicons name="close-circle" size={18} color={colors.danger} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.ncTitle}>{nc.title}</Text>
-                    <Text style={styles.ncObs}>
-                      {nc.answer?.observation || 'Sem observação detalhada registrada.'}
-                    </Text>
+              {nonConformItems.map((nc) => {
+                const critLevel = nc.answer?.criticality || 'MEDIUM';
+                return (
+                  <View key={nc.id} style={styles.ncItem}>
+                    <Ionicons name="close-circle" size={18} color={colors.danger} />
+                    <View style={{ flex: 1 }}>
+                      <View style={styles.ncHeaderRow}>
+                        <Text style={styles.ncTitle}>{nc.title}</Text>
+                        <Badge
+                          label={`Criticidade: ${formatCriticalityLabel(critLevel)}`}
+                          type={critLevel}
+                        />
+                      </View>
+                      <Text style={styles.ncMetaText}>
+                        Inspeção {inspection.code} • {nc.section_name}
+                      </Text>
+                      <Text style={styles.ncObs}>
+                        {nc.answer?.observation || 'Sem observação detalhada registrada.'}
+                      </Text>
+                      {nc.answer?.answered_at && (
+                        <Text style={styles.ncTimestamp}>
+                          Registrado em: {formatDateTime(nc.answer.answered_at)}
+                        </Text>
+                      )}
+                      {nc.evidences.length > 0 && (
+                        <ScrollView
+                          horizontal
+                          showsHorizontalScrollIndicator={false}
+                          style={styles.ncPhotoRow}
+                        >
+                          {nc.evidences.map((photo) => (
+                            <View key={photo.id} style={styles.ncPhotoItem}>
+                              <Image source={{ uri: photo.file_uri }} style={styles.summaryPhoto} />
+                              <Text style={styles.ncPhotoTime}>
+                                {formatDateTime(photo.created_at)}
+                              </Text>
+                            </View>
+                          ))}
+                        </ScrollView>
+                      )}
+                    </View>
                   </View>
-                </View>
-              ))}
+                );
+              })}
             </View>
           </View>
         ) : (
@@ -362,15 +411,49 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 8,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#FECACA',
+  },
+  ncHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
   },
   ncTitle: {
     fontSize: 13,
     fontWeight: '700',
     color: colors.text,
+    flex: 1,
+  },
+  ncMetaText: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 2,
   },
   ncObs: {
     fontSize: 12,
     color: colors.danger,
+    marginTop: 4,
+  },
+  ncTimestamp: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  ncPhotoRow: {
+    flexDirection: 'row',
+    marginTop: 8,
+  },
+  ncPhotoItem: {
+    marginRight: 10,
+    alignItems: 'flex-start',
+  },
+  ncPhotoTime: {
+    fontSize: 9,
+    color: colors.textSecondary,
     marginTop: 2,
   },
   successCard: {
