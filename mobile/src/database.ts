@@ -103,7 +103,7 @@ export async function initDatabase() {
       id TEXT PRIMARY KEY NOT NULL,
       email TEXT NOT NULL,
       senha TEXT NOT NULL,
-      nome TEXT NOT NULL DEFAULT 'Carlos Silva',
+      nome TEXT NOT NULL DEFAULT 'Hamilton',
       perfil TEXT NOT NULL DEFAULT 'TECHNICIAN'
     );
 
@@ -134,8 +134,15 @@ async function seedDatabaseIfEmpty(db: SQLite.SQLiteDatabase) {
       '2',
       'tecnico@fieldops.com',
       '123456',
-      'Carlos Tecnico',
+      'Hamilton',
       'TECNICO'
+    );
+  } else {
+    await db.runAsync(
+      `UPDATE usuarios SET nome = 'Hamilton' WHERE LOWER(email) = 'tecnico@fieldops.com'`
+    );
+    await db.runAsync(
+      `UPDATE auth_session SET name = 'Hamilton' WHERE LOWER(email) = 'tecnico@fieldops.com'`
     );
   }
 
@@ -184,7 +191,7 @@ async function seedDatabaseIfEmpty(db: SQLite.SQLiteDatabase) {
     'HIGH',
     'Hoje, 08:00 - 10:30',
     'usr-tech-001',
-    'Carlos Silva',
+    'Hamilton',
     'Verificar estanqueidade, vibração anormal e pressão do manômetro.',
     'PENDING'
   );
@@ -306,7 +313,7 @@ async function seedDatabaseIfEmpty(db: SQLite.SQLiteDatabase) {
     'MEDIUM',
     'Hoje, 11:00 - 12:30',
     'usr-tech-001',
-    'Carlos Silva',
+    'Hamilton',
     'Inspeção preventiva semestral nos trocadores de calor.',
     'SYNCED'
   );
@@ -393,7 +400,7 @@ async function seedDatabaseIfEmpty(db: SQLite.SQLiteDatabase) {
     'LOW',
     'Hoje, 14:00 - 16:00',
     'usr-tech-001',
-    'Carlos Silva',
+    'Hamilton',
     'Checagem de nível de óleo e carga das baterias de partida.',
     'SYNCED'
   );
@@ -1000,7 +1007,7 @@ export async function syncServerDataToLocalDb(payload: {
 
     const assignedTechId = String(srvInsp.usuarioId ?? srvInsp.usuario?.id ?? '2');
     const assignedTechName =
-      srvInsp.usuarioNome || srvInsp.usuario?.nome || 'Carlos Tecnico';
+      srvInsp.usuarioNome || srvInsp.usuario?.nome || 'Hamilton';
 
     const serverStatus = mapServerStatusToLocal(srvInsp.status);
     const scheduledDate = formatServerDate(srvInsp.dataAgendada);

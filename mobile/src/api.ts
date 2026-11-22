@@ -172,7 +172,7 @@ async function ensureTechnicianOnBackend(email: string, senha: string): Promise<
             Authorization: `Bearer ${adminToken}`,
           },
           body: JSON.stringify({
-            nome: existing.nome || 'Carlos Silva',
+            nome: existing.nome || 'Hamilton',
             email: cleanEmail,
             senha: cleanPass,
             perfil: existing.perfil || 'TECNICO',
@@ -190,7 +190,7 @@ async function ensureTechnicianOnBackend(email: string, senha: string): Promise<
         Authorization: `Bearer ${adminToken}`,
       },
       body: JSON.stringify({
-        nome: 'Carlos Silva',
+        nome: 'Hamilton',
         email: cleanEmail,
         senha: cleanPass,
         perfil: 'TECNICO',
@@ -237,7 +237,7 @@ export async function loginWithApi(email: string, senha: string): Promise<User> 
   const userId = claims?.id != null ? String(claims.id) : '2';
   const user: User = {
     id: userId,
-    name: data.nome || 'Carlos Silva',
+    name: data.nome || 'Hamilton',
     email: data.email || email.trim(),
     role: data.perfil || claims?.perfil || 'TECNICO',
     token: accessToken,

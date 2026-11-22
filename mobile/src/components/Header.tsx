@@ -15,7 +15,7 @@ export const Header: React.FC<HeaderProps> = ({
   onSyncPress,
   syncPendingCount = 0,
   isOnline = true,
-  userName = 'Carlos Silva',
+  userName = 'Hamilton',
   onLogout,
 }) => {
   return (
