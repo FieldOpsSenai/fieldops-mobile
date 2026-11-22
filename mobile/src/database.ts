@@ -444,7 +444,12 @@ async function seedDatabaseIfEmpty(db: SQLite.SQLiteDatabase) {
 // OPERAÇÕES DO BANCO DE DADOS
 // -------------------------------------------------------------
 
-export async function getInspections(searchTerm?: string, statusFilter?: string): Promise<Inspection[]> {
+export async function getInspections(
+  searchTerm?: string,
+  statusFilter?: string,
+  priorityFilter?: string,
+  dateFilter?: string
+): Promise<Inspection[]> {
   const db = await getDatabase();
   let query = `SELECT * FROM inspections WHERE 1=1`;
   const params: any[] = [];
@@ -460,10 +465,34 @@ export async function getInspections(searchTerm?: string, statusFilter?: string)
     params.push(statusFilter);
   }
 
+  if (priorityFilter && priorityFilter !== 'ALL') {
+    query += ` AND priority = ?`;
+    params.push(priorityFilter);
+  }
+
+  if (dateFilter && dateFilter.trim() !== '' && dateFilter !== 'ALL') {
+    if (dateFilter === 'TODAY') {
+      const now = new Date();
+      const dd = String(now.getDate()).padStart(2, '0');
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const yyyy = now.getFullYear();
+      const todayStr = `%${dd}/${mm}/${yyyy}%`;
+      query += ` AND (scheduled_date LIKE '%Hoje%' OR scheduled_date LIKE ?)`;
+      params.push(todayStr);
+    } else {
+      query += ` AND scheduled_date LIKE ?`;
+      params.push(`%${dateFilter.trim()}%`);
+    }
+  }
+
   query += ` ORDER BY CASE status 
     WHEN 'IN_PROGRESS' THEN 1 
     WHEN 'SCHEDULED' THEN 2 
     WHEN 'COMPLETED' THEN 3 
+    ELSE 4 END, CASE priority
+    WHEN 'HIGH' THEN 1
+    WHEN 'MEDIUM' THEN 2
+    WHEN 'LOW' THEN 3
     ELSE 4 END, scheduled_date ASC`;
 
   return db.getAllAsync<Inspection>(query, ...params);

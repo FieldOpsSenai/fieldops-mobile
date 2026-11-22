@@ -25,11 +25,16 @@ export const InspectionsListScreen: React.FC<InspectionsListScreenProps> = ({
   const [inspections, setInspections] = useState<Inspection[]>([]);
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState<'ALL' | 'IN_PROGRESS' | 'SCHEDULED' | 'COMPLETED'>('ALL');
+  const [priorityFilter, setPriorityFilter] = useState<'ALL' | 'HIGH' | 'MEDIUM' | 'LOW'>('ALL');
+  const [dateFilter, setDateFilter] = useState<string>('ALL');
+  const [customDateText, setCustomDateText] = useState<string>('');
   const [refreshing, setRefreshing] = useState(false);
+
+  const effectiveDateFilter = customDateText.trim() !== '' ? customDateText.trim() : dateFilter;
 
   const fetchInspections = async () => {
     try {
-      const data = await getInspections(search, activeFilter);
+      const data = await getInspections(search, activeFilter, priorityFilter, effectiveDateFilter);
       setInspections(data);
     } catch (err) {
       console.log('Erro ao listar inspeções:', err);
@@ -38,13 +43,27 @@ export const InspectionsListScreen: React.FC<InspectionsListScreenProps> = ({
 
   useEffect(() => {
     fetchInspections();
-  }, [search, activeFilter]);
+  }, [search, activeFilter, priorityFilter, effectiveDateFilter]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
     await pullServerData();
     await fetchInspections();
     setRefreshing(false);
+  };
+
+  const hasActiveFilters =
+    search.trim() !== '' ||
+    activeFilter !== 'ALL' ||
+    priorityFilter !== 'ALL' ||
+    effectiveDateFilter !== 'ALL';
+
+  const clearAllFilters = () => {
+    setSearch('');
+    setActiveFilter('ALL');
+    setPriorityFilter('ALL');
+    setDateFilter('ALL');
+    setCustomDateText('');
   };
 
   const filterOptions = [
@@ -54,9 +73,21 @@ export const InspectionsListScreen: React.FC<InspectionsListScreenProps> = ({
     { key: 'COMPLETED', label: 'Concluídas' },
   ];
 
+  const priorityOptions = [
+    { key: 'ALL', label: 'Todas' },
+    { key: 'HIGH', label: 'Alta' },
+    { key: 'MEDIUM', label: 'Média' },
+    { key: 'LOW', label: 'Baixa' },
+  ];
+
+  const dateOptions = [
+    { key: 'ALL', label: 'Qualquer data' },
+    { key: 'TODAY', label: 'Hoje' },
+  ];
+
   return (
     <View style={styles.container}>
-      {/* Search Header */}
+      {/* Search & Filters Header */}
       <View style={styles.searchHeader}>
         <View style={styles.searchBar}>
           <Ionicons name="search-outline" size={18} color={colors.textSecondary} />
@@ -74,7 +105,8 @@ export const InspectionsListScreen: React.FC<InspectionsListScreenProps> = ({
           )}
         </View>
 
-        {/* Filter Chips */}
+        {/* Filtro por Estado */}
+        <Text style={styles.filterGroupLabel}>Estado:</Text>
         <View style={styles.filterRow}>
           {filterOptions.map((f) => (
             <TouchableOpacity
@@ -96,6 +128,80 @@ export const InspectionsListScreen: React.FC<InspectionsListScreenProps> = ({
             </TouchableOpacity>
           ))}
         </View>
+
+        {/* Filtro por Prioridade */}
+        <Text style={styles.filterGroupLabel}>Prioridade:</Text>
+        <View style={styles.filterRow}>
+          {priorityOptions.map((p) => (
+            <TouchableOpacity
+              key={p.key}
+              style={[
+                styles.filterChip,
+                priorityFilter === p.key && styles.filterChipActive,
+              ]}
+              onPress={() => setPriorityFilter(p.key as any)}
+            >
+              <Text
+                style={[
+                  styles.filterChipText,
+                  priorityFilter === p.key && styles.filterChipTextActive,
+                ]}
+              >
+                {p.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Filtro por Data */}
+        <Text style={styles.filterGroupLabel}>Data agendada:</Text>
+        <View style={styles.dateFilterRow}>
+          {dateOptions.map((d) => (
+            <TouchableOpacity
+              key={d.key}
+              style={[
+                styles.filterChip,
+                dateFilter === d.key && customDateText.trim() === '' && styles.filterChipActive,
+              ]}
+              onPress={() => {
+                setCustomDateText('');
+                setDateFilter(d.key);
+              }}
+            >
+              <Text
+                style={[
+                  styles.filterChipText,
+                  dateFilter === d.key && customDateText.trim() === '' && styles.filterChipTextActive,
+                ]}
+              >
+                {d.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+
+          <View style={styles.dateInputBox}>
+            <Ionicons name="calendar-outline" size={14} color={colors.textSecondary} />
+            <TextInput
+              style={styles.dateInput}
+              placeholder="DD/MM/AAAA ou horário"
+              placeholderTextColor={colors.textMuted}
+              value={customDateText}
+              onChangeText={setCustomDateText}
+            />
+            {customDateText.length > 0 && (
+              <TouchableOpacity onPress={() => setCustomDateText('')}>
+                <Ionicons name="close-circle" size={14} color={colors.textMuted} />
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+
+        {hasActiveFilters && (
+          <TouchableOpacity style={styles.clearFiltersBtn} onPress={clearAllFilters}>
+            <Ionicons name="refresh-outline" size={14} color={colors.primary} />
+            <Text style={styles.clearFiltersText}>Limpar filtros ativos</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* List */}
@@ -187,9 +293,56 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.text,
   },
+  filterGroupLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    marginBottom: 6,
+    marginTop: 4,
+  },
   filterRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
+    marginBottom: 6,
+  },
+  dateFilterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  dateInputBox: {
+    flex: 1,
+    minWidth: 140,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 16,
+    paddingHorizontal: 10,
+    height: 30,
+    gap: 6,
+  },
+  dateInput: {
+    flex: 1,
+    fontSize: 12,
+    color: colors.text,
+    paddingVertical: 0,
+  },
+  clearFiltersBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 4,
+    marginTop: 10,
+  },
+  clearFiltersText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.primary,
   },
   filterChip: {
     paddingHorizontal: 12,
