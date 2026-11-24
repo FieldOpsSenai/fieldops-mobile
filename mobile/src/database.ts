@@ -43,11 +43,14 @@ export async function initDatabase() {
       assigned_tech_name TEXT NOT NULL,
       start_latitude REAL,
       start_longitude REAL,
+      start_accuracy REAL,
       started_at TEXT,
       end_latitude REAL,
       end_longitude REAL,
+      end_accuracy REAL,
       completed_at TEXT,
       notes TEXT,
+      rejection_reason TEXT,
       sync_status TEXT NOT NULL DEFAULT 'SYNCED'
     );
 
@@ -126,6 +129,18 @@ export async function initDatabase() {
   } catch {
     // Coluna criticality já existe no banco local
   }
+
+  try {
+    await db.execAsync(`ALTER TABLE inspections ADD COLUMN start_accuracy REAL;`);
+  } catch {}
+
+  try {
+    await db.execAsync(`ALTER TABLE inspections ADD COLUMN end_accuracy REAL;`);
+  } catch {}
+
+  try {
+    await db.execAsync(`ALTER TABLE inspections ADD COLUMN rejection_reason TEXT;`);
+  } catch {}
 
   await seedDatabaseIfEmpty(db);
 }
@@ -676,7 +691,8 @@ export async function addEvidencePhoto(params: {
 export async function startInspection(
   inspectionId: string,
   latitude?: number | null,
-  longitude?: number | null
+  longitude?: number | null,
+  accuracy?: number | null
 ) {
   const db = await getDatabase();
   const now = new Date().toISOString();
@@ -687,11 +703,13 @@ export async function startInspection(
          started_at = ?, 
          start_latitude = ?, 
          start_longitude = ?,
+         start_accuracy = ?,
          sync_status = 'PENDING'
      WHERE id = ?`,
     now,
     latitude || null,
     longitude || null,
+    accuracy || null,
     inspectionId
   );
 
@@ -700,13 +718,15 @@ export async function startInspection(
     startedAt: now,
     latitude,
     longitude,
+    accuracy,
   });
 }
 
 export async function completeInspection(
   inspectionId: string,
   latitude?: number | null,
-  longitude?: number | null
+  longitude?: number | null,
+  accuracy?: number | null
 ) {
   const db = await getDatabase();
   const now = new Date().toISOString();
@@ -717,11 +737,13 @@ export async function completeInspection(
          completed_at = ?, 
          end_latitude = ?, 
          end_longitude = ?,
+         end_accuracy = ?,
          sync_status = 'PENDING'
      WHERE id = ?`,
     now,
     latitude || null,
     longitude || null,
+    accuracy || null,
     inspectionId
   );
 
@@ -730,6 +752,7 @@ export async function completeInspection(
     completedAt: now,
     latitude,
     longitude,
+    accuracy,
   });
 }
 
@@ -961,12 +984,23 @@ function mapServerStatusToLocal(serverStatus?: string): Inspection['status'] {
     case 'IN_PROGRESS':
       return 'IN_PROGRESS';
     case 'CONCLUIDA':
+    case 'SUBMITTED':
+    case 'UNDER_REVIEW':
+    case 'EM_REVISAO':
     case 'COMPLETED':
       return 'COMPLETED';
+    case 'APROVADA':
+    case 'APPROVED':
+      return 'APPROVED';
+    case 'REPROVADA':
+    case 'REJECTED':
+      return 'REJECTED';
     case 'CANCELADA':
+    case 'CANCELED':
     case 'FAILED':
       return 'FAILED';
     case 'PENDENTE':
+    case 'ASSIGNED':
     case 'SCHEDULED':
     default:
       return 'SCHEDULED';

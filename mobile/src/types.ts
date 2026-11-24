@@ -5,6 +5,7 @@ export type InspectionStatus =
   | 'IN_PROGRESS'
   | 'COMPLETED'
   | 'APPROVED'
+  | 'REJECTED'
   | 'FAILED';
 
 export type SyncStatus = 'SYNCED' | 'PENDING' | 'ERROR';
@@ -47,11 +48,14 @@ export interface Inspection {
   assigned_tech_name: string;
   start_latitude?: number | null;
   start_longitude?: number | null;
+  start_accuracy?: number | null;
   started_at?: string | null;
   end_latitude?: number | null;
   end_longitude?: number | null;
+  end_accuracy?: number | null;
   completed_at?: string | null;
   notes?: string | null;
+  rejection_reason?: string | null;
   sync_status: SyncStatus;
 }
 
