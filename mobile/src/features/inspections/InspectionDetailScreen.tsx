@@ -311,9 +311,18 @@ export const InspectionDetailScreen: React.FC<InspectionDetailScreenProps> = ({
                     <Text style={styles.evidenceItemName} numberOfLines={1}>
                       {ev.itemTitle}
                     </Text>
+                    <Text style={styles.evidenceInspCode} numberOfLines={1}>
+                      {ev.sectionName}
+                    </Text>
                     <Text style={styles.evidenceInspCode}>
                       {inspection.code} • {formatDateTime(ev.created_at)}
                     </Text>
+                    <View style={{ marginTop: 4, alignSelf: 'flex-start' }}>
+                      <Badge
+                        label={ev.sync_status === 'SYNCED' ? 'ENVIADA' : 'PENDENTE'}
+                        type={ev.sync_status}
+                      />
+                    </View>
                   </View>
                 ))}
               </ScrollView>
