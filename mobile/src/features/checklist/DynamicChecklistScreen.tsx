@@ -511,7 +511,10 @@ export const DynamicChecklistScreen: React.FC<DynamicChecklistScreenProps> = ({
                         >
                           <Ionicons name="camera-outline" size={16} color={colors.danger} />
                           <Text style={styles.ncEvidenceAlertText}>
-                            Evidência recomendada: toque para anexar foto da não conformidade
+                            {item.answer?.criticality === 'CRITICAL' ||
+                            item.answer?.criticality === 'HIGH'
+                              ? 'Evidência obrigatória (RN-055): toque para anexar foto da não conformidade'
+                              : 'Evidência recomendada: toque para anexar foto da não conformidade'}
                           </Text>
                         </TouchableOpacity>
                       ) : (
