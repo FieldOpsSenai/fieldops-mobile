@@ -15,7 +15,7 @@ import { colors } from '../../theme';
 import { Badge } from '../../components/Badge';
 import { OutboxRecord } from '../../types';
 import { getAllOutboxRecords, getSyncStats } from '../../database';
-import { processOutboxQueue } from '../../sync';
+import { processOutboxQueue, getSyncMetadata, SyncMetadata } from '../../sync';
 
 interface SyncOutboxScreenProps {
   onSyncCompleted?: () => void;
@@ -24,6 +24,11 @@ interface SyncOutboxScreenProps {
 export const SyncOutboxScreen: React.FC<SyncOutboxScreenProps> = ({ onSyncCompleted }) => {
   const [records, setRecords] = useState<OutboxRecord[]>([]);
   const [stats, setStats] = useState({ pending: 0, synced: 0, error: 0 });
+  const [syncMeta, setSyncMeta] = useState<SyncMetadata>({
+    last_sync_at: null,
+    last_sync_result: null,
+    last_sync_message: null,
+  });
   const [isOnline, setIsOnline] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -38,6 +43,9 @@ export const SyncOutboxScreen: React.FC<SyncOutboxScreenProps> = ({ onSyncComple
 
       const st = await getSyncStats();
       setStats(st);
+
+      const meta = await getSyncMetadata();
+      setSyncMeta(meta);
     } catch (err) {
       console.log('Erro ao carregar outbox:', err);
     }
@@ -124,6 +132,42 @@ export const SyncOutboxScreen: React.FC<SyncOutboxScreenProps> = ({ onSyncComple
                 : 'Trabalhe normalmente. As ações serão salvas no SQLite.'}
             </Text>
           </View>
+        </View>
+
+        {/* Last Synchronization Metadata Card (RN-072 / PBI-054) */}
+        <View style={styles.lastSyncCard}>
+          <View style={styles.lastSyncHeader}>
+            <View style={styles.lastSyncTitleRow}>
+              <Ionicons name="time-outline" size={18} color={colors.primary} />
+              <Text style={styles.lastSyncTitle}>Última Sincronização</Text>
+            </View>
+            {syncMeta.last_sync_result && (
+              <Badge
+                label={
+                  syncMeta.last_sync_result === 'SUCCESS'
+                    ? 'SUCESSO'
+                    : syncMeta.last_sync_result === 'PARTIAL'
+                    ? 'PARCIAL'
+                    : 'FALHA'
+                }
+                type={
+                  syncMeta.last_sync_result === 'SUCCESS'
+                    ? 'SYNCED'
+                    : syncMeta.last_sync_result === 'PARTIAL'
+                    ? 'PENDING'
+                    : 'ERROR'
+                }
+              />
+            )}
+          </View>
+          <Text style={styles.lastSyncTime}>
+            {syncMeta.last_sync_at
+              ? new Date(syncMeta.last_sync_at).toLocaleString('pt-BR')
+              : 'Nenhuma sincronização completa registrada nesta sessão'}
+          </Text>
+          {syncMeta.last_sync_message && (
+            <Text style={styles.lastSyncDesc}>{syncMeta.last_sync_message}</Text>
+          )}
         </View>
 
         {/* Outbox Metrics */}
@@ -252,6 +296,42 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.textSecondary,
     marginTop: 1,
+  },
+  lastSyncCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: 16,
+  },
+  lastSyncHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  lastSyncTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  lastSyncTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  lastSyncTime: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.primary,
+    fontFamily: 'monospace',
+    marginTop: 2,
+  },
+  lastSyncDesc: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 4,
   },
   statsRow: {
     flexDirection: 'row',
