@@ -27,6 +27,7 @@ export const statusColors: Record<string, { bg: string; text: string }> = {
   IN_PROGRESS: { bg: '#E0F2FE', text: '#0284C7' },
   SCHEDULED: { bg: '#F1F5F9', text: '#475569' },
   COMPLETED: { bg: '#EDE9FE', text: '#6D28D9' },
+  REJECTED: { bg: '#FEE2E2', text: '#B91C1C' },
   FAILED: { bg: '#FEE2E2', text: '#B91C1C' },
   CRITICAL: { bg: '#991B1B', text: '#FFFFFF' },
   HIGH: { bg: '#FEE2E2', text: '#B91C1C' },

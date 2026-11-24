@@ -131,6 +131,26 @@ export const InspectionDetailScreen: React.FC<InspectionDetailScreenProps> = ({
           </View>
         </View>
 
+        {/* Alerta de Inspeção Reprovada pelo Supervisor (PBI-062 / AC-REVIEW) */}
+        {((inspection.status as string) === 'REJECTED' || inspection.status === 'FAILED') && (
+          <View style={styles.rejectedCard}>
+            <View style={styles.rejectedHeader}>
+              <Ionicons name="alert-circle" size={20} color="#FFFFFF" />
+              <Text style={styles.rejectedHeaderTitle}>
+                Inspeção Reprovada — Correção Solicitada
+              </Text>
+            </View>
+            <View style={styles.rejectedBody}>
+              <Text style={styles.rejectedReasonLabel}>Motivo / Instruções do Supervisor:</Text>
+              <Text style={styles.rejectedReasonText}>
+                {(inspection as any).rejection_reason ||
+                  inspection.notes ||
+                  'Revise os itens apontados pelo supervisor, atualize as evidências e reenvie a vistoria.'}
+              </Text>
+            </View>
+          </View>
+        )}
+
         {/* Local & Cliente */}
         <View style={styles.cardSection}>
           <Text style={styles.sectionTitle}>Local da Vistoria</Text>
@@ -187,17 +207,42 @@ export const InspectionDetailScreen: React.FC<InspectionDetailScreenProps> = ({
           </View>
         )}
 
-        {/* Georreferenciamento de Início */}
+        {/* Georreferenciamento de Início e Conclusão (RN-061 / RN-062) */}
         {inspection.started_at && (
           <View style={styles.cardSection}>
             <Text style={styles.sectionTitle}>Comprovação de Presença (GPS)</Text>
             <View style={styles.gpsRow}>
               <Ionicons name="navigate-circle-outline" size={18} color={colors.success} />
-              <Text style={styles.gpsText}>
-                {inspection.start_latitude && inspection.start_longitude
-                  ? `Lat: ${inspection.start_latitude.toFixed(6)}, Long: ${inspection.start_longitude.toFixed(6)}`
-                  : 'Coordenadas salvas no dispositivo'}
-              </Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.gpsText}>
+                  {inspection.start_latitude && inspection.start_longitude
+                    ? `Início: Lat ${inspection.start_latitude.toFixed(6)}, Long ${inspection.start_longitude.toFixed(6)}${
+                        (inspection as any).start_accuracy
+                          ? ` (±${Math.round((inspection as any).start_accuracy)}m)`
+                          : ''
+                      }`
+                    : 'Início: Coordenadas salvas no dispositivo'}
+                </Text>
+                <Text style={styles.gpsTimeText}>
+                  Horário de início: {formatDateTime(inspection.started_at)}
+                </Text>
+                {inspection.completed_at && (
+                  <>
+                    <Text style={[styles.gpsText, { marginTop: 6 }]}>
+                      {inspection.end_latitude && inspection.end_longitude
+                        ? `Conclusão: Lat ${inspection.end_latitude.toFixed(6)}, Long ${inspection.end_longitude.toFixed(6)}${
+                            (inspection as any).end_accuracy
+                              ? ` (±${Math.round((inspection as any).end_accuracy)}m)`
+                              : ''
+                          }`
+                        : 'Conclusão: Registrada no dispositivo'}
+                    </Text>
+                    <Text style={styles.gpsTimeText}>
+                      Horário de conclusão: {formatDateTime(inspection.completed_at)}
+                    </Text>
+                  </>
+                )}
+              </View>
             </View>
           </View>
         )}
@@ -295,14 +340,25 @@ export const InspectionDetailScreen: React.FC<InspectionDetailScreenProps> = ({
               </>
             )}
           </TouchableOpacity>
-        ) : inspection.status === 'IN_PROGRESS' ? (
+        ) : inspection.status === 'IN_PROGRESS' ||
+          (inspection.status as string) === 'REJECTED' ||
+          inspection.status === 'FAILED' ? (
           <TouchableOpacity
-            style={styles.actionBtn}
+            style={[
+              styles.actionBtn,
+              ((inspection.status as string) === 'REJECTED' || inspection.status === 'FAILED') && {
+                backgroundColor: colors.danger,
+              },
+            ]}
             activeOpacity={0.8}
             onPress={() => onOpenChecklist(inspection)}
           >
             <Ionicons name="create-outline" size={20} color="#FFFFFF" />
-            <Text style={styles.actionBtnText}>Continuar Checklist Dinâmico</Text>
+            <Text style={styles.actionBtnText}>
+              {(inspection.status as string) === 'REJECTED' || inspection.status === 'FAILED'
+                ? 'Corrigir Checklist e Reenviar'
+                : 'Continuar Checklist Dinâmico'}
+            </Text>
           </TouchableOpacity>
         ) : (
           <TouchableOpacity
@@ -467,6 +523,46 @@ const styles = StyleSheet.create({
     color: colors.success,
     fontWeight: '600',
     fontFamily: 'monospace',
+  },
+  gpsTimeText: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  rejectedCard: {
+    backgroundColor: '#FEF2F2',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+    overflow: 'hidden',
+  },
+  rejectedHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.danger,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  rejectedHeaderTitle: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  rejectedBody: {
+    padding: 12,
+  },
+  rejectedReasonLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#991B1B',
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  rejectedReasonText: {
+    fontSize: 13,
+    color: colors.text,
+    lineHeight: 18,
   },
   emptyTrackingRow: {
     flexDirection: 'row',
