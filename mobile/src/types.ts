@@ -20,6 +20,8 @@ export type ResponseType =
 
 export type ConformityValue = 'CONFORM' | 'NON_CONFORM' | 'NOT_APPLICABLE';
 
+export type CriticalityLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+
 export interface User {
   id: string;
   name: string;
@@ -72,6 +74,7 @@ export interface InspectionAnswer {
   value: string;
   observation?: string | null;
   is_non_conform: number; // 1 or 0
+  criticality?: CriticalityLevel | null;
   answered_at: string;
 }
 

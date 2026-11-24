@@ -8,6 +8,7 @@ import {
   OutboxRecord,
   OutboxEventType,
   ChecklistItemWithAnswer,
+  CriticalityLevel,
   User,
 } from './types';
 
@@ -70,6 +71,7 @@ export async function initDatabase() {
       value TEXT NOT NULL,
       observation TEXT,
       is_non_conform INTEGER NOT NULL DEFAULT 0,
+      criticality TEXT,
       answered_at TEXT NOT NULL,
       UNIQUE(inspection_id, item_id),
       FOREIGN KEY (inspection_id) REFERENCES inspections(id) ON DELETE CASCADE,
@@ -103,7 +105,7 @@ export async function initDatabase() {
       id TEXT PRIMARY KEY NOT NULL,
       email TEXT NOT NULL,
       senha TEXT NOT NULL,
-      nome TEXT NOT NULL DEFAULT 'Carlos Silva',
+      nome TEXT NOT NULL DEFAULT 'Hamilton',
       perfil TEXT NOT NULL DEFAULT 'TECHNICIAN'
     );
 
@@ -118,6 +120,12 @@ export async function initDatabase() {
       updated_at TEXT NOT NULL
     );
   `);
+
+  try {
+    await db.execAsync(`ALTER TABLE inspection_answers ADD COLUMN criticality TEXT;`);
+  } catch {
+    // Coluna criticality já existe no banco local
+  }
 
   await seedDatabaseIfEmpty(db);
 }
@@ -134,8 +142,15 @@ async function seedDatabaseIfEmpty(db: SQLite.SQLiteDatabase) {
       '2',
       'tecnico@fieldops.com',
       '123456',
-      'Carlos Tecnico',
+      'Hamilton',
       'TECNICO'
+    );
+  } else {
+    await db.runAsync(
+      `UPDATE usuarios SET nome = 'Hamilton' WHERE LOWER(email) = 'tecnico@fieldops.com'`
+    );
+    await db.runAsync(
+      `UPDATE auth_session SET name = 'Hamilton' WHERE LOWER(email) = 'tecnico@fieldops.com'`
     );
   }
 
@@ -184,7 +199,7 @@ async function seedDatabaseIfEmpty(db: SQLite.SQLiteDatabase) {
     'HIGH',
     'Hoje, 08:00 - 10:30',
     'usr-tech-001',
-    'Carlos Silva',
+    'Hamilton',
     'Verificar estanqueidade, vibração anormal e pressão do manômetro.',
     'PENDING'
   );
@@ -306,7 +321,7 @@ async function seedDatabaseIfEmpty(db: SQLite.SQLiteDatabase) {
     'MEDIUM',
     'Hoje, 11:00 - 12:30',
     'usr-tech-001',
-    'Carlos Silva',
+    'Hamilton',
     'Inspeção preventiva semestral nos trocadores de calor.',
     'SYNCED'
   );
@@ -393,7 +408,7 @@ async function seedDatabaseIfEmpty(db: SQLite.SQLiteDatabase) {
     'LOW',
     'Hoje, 14:00 - 16:00',
     'usr-tech-001',
-    'Carlos Silva',
+    'Hamilton',
     'Checagem de nível de óleo e carga das baterias de partida.',
     'SYNCED'
   );
@@ -444,7 +459,12 @@ async function seedDatabaseIfEmpty(db: SQLite.SQLiteDatabase) {
 // OPERAÇÕES DO BANCO DE DADOS
 // -------------------------------------------------------------
 
-export async function getInspections(searchTerm?: string, statusFilter?: string): Promise<Inspection[]> {
+export async function getInspections(
+  searchTerm?: string,
+  statusFilter?: string,
+  priorityFilter?: string,
+  dateFilter?: string
+): Promise<Inspection[]> {
   const db = await getDatabase();
   let query = `SELECT * FROM inspections WHERE 1=1`;
   const params: any[] = [];
@@ -460,10 +480,34 @@ export async function getInspections(searchTerm?: string, statusFilter?: string)
     params.push(statusFilter);
   }
 
+  if (priorityFilter && priorityFilter !== 'ALL') {
+    query += ` AND priority = ?`;
+    params.push(priorityFilter);
+  }
+
+  if (dateFilter && dateFilter.trim() !== '' && dateFilter !== 'ALL') {
+    if (dateFilter === 'TODAY') {
+      const now = new Date();
+      const dd = String(now.getDate()).padStart(2, '0');
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const yyyy = now.getFullYear();
+      const todayStr = `%${dd}/${mm}/${yyyy}%`;
+      query += ` AND (scheduled_date LIKE '%Hoje%' OR scheduled_date LIKE ?)`;
+      params.push(todayStr);
+    } else {
+      query += ` AND scheduled_date LIKE ?`;
+      params.push(`%${dateFilter.trim()}%`);
+    }
+  }
+
   query += ` ORDER BY CASE status 
     WHEN 'IN_PROGRESS' THEN 1 
     WHEN 'SCHEDULED' THEN 2 
     WHEN 'COMPLETED' THEN 3 
+    ELSE 4 END, CASE priority
+    WHEN 'HIGH' THEN 1
+    WHEN 'MEDIUM' THEN 2
+    WHEN 'LOW' THEN 3
     ELSE 4 END, scheduled_date ASC`;
 
   return db.getAllAsync<Inspection>(query, ...params);
@@ -514,21 +558,26 @@ export async function saveAnswer(params: {
   value: string;
   observation?: string | null;
   isNonConform: boolean;
+  criticality?: CriticalityLevel | null;
 }): Promise<InspectionAnswer> {
   const db = await getDatabase();
   const answerId = Crypto.randomUUID();
   const now = new Date().toISOString();
   const nonConformInt = params.isNonConform ? 1 : 0;
+  const resolvedCriticality = params.isNonConform
+    ? params.criticality || 'MEDIUM'
+    : null;
 
   // UPSERT
   await db.runAsync(
     `INSERT INTO inspection_answers (
-      id, inspection_id, item_id, value, observation, is_non_conform, answered_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      id, inspection_id, item_id, value, observation, is_non_conform, criticality, answered_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(inspection_id, item_id) DO UPDATE SET
       value = excluded.value,
       observation = excluded.observation,
       is_non_conform = excluded.is_non_conform,
+      criticality = excluded.criticality,
       answered_at = excluded.answered_at`,
     answerId,
     params.inspectionId,
@@ -536,6 +585,7 @@ export async function saveAnswer(params: {
     params.value,
     params.observation || null,
     nonConformInt,
+    resolvedCriticality,
     now
   );
 
@@ -549,6 +599,7 @@ export async function saveAnswer(params: {
       value: params.value,
       observation: params.observation,
       isNonConform: params.isNonConform,
+      criticality: resolvedCriticality,
       answeredAt: now,
     }
   );
@@ -566,6 +617,7 @@ export async function saveAnswer(params: {
     value: params.value,
     observation: params.observation,
     is_non_conform: nonConformInt,
+    criticality: resolvedCriticality,
     answered_at: now,
   };
 }
@@ -1000,7 +1052,7 @@ export async function syncServerDataToLocalDb(payload: {
 
     const assignedTechId = String(srvInsp.usuarioId ?? srvInsp.usuario?.id ?? '2');
     const assignedTechName =
-      srvInsp.usuarioNome || srvInsp.usuario?.nome || 'Carlos Tecnico';
+      srvInsp.usuarioNome || srvInsp.usuario?.nome || 'Hamilton';
 
     const serverStatus = mapServerStatusToLocal(srvInsp.status);
     const scheduledDate = formatServerDate(srvInsp.dataAgendada);

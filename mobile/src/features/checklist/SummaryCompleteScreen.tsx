@@ -12,7 +12,7 @@ import {
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../theme';
-import { Badge } from '../../components/Badge';
+import { Badge, formatCriticalityLabel } from '../../components/Badge';
 import { Inspection, ChecklistItemWithAnswer } from '../../types';
 import {
   getChecklistWithAnswers,
@@ -42,14 +42,91 @@ export const SummaryCompleteScreen: React.FC<SummaryCompleteScreenProps> = ({
     (i) => i.answer?.is_non_conform === 1 || i.answer?.value === 'NON_CONFORM'
   );
 
-  const missingRequired = items.filter((i) => i.required === 1 && !i.answer?.value);
+  const supportedTypes = [
+    'CONFORMITY',
+    'BOOLEAN',
+    'NUMBER',
+    'SINGLE_CHOICE',
+    'TEXT_SHORT',
+    'TEXT_LONG',
+    'DATE',
+  ];
+
+  const missingRequired = items.filter(
+    (i) =>
+      i.required === 1 &&
+      (!i.answer?.value || !supportedTypes.includes(i.response_type))
+  );
+
+  // RN-038: Resposta não conforme exige observação
+  const missingNonConformObs = nonConformItems.filter(
+    (i) => !i.answer?.observation || i.answer.observation.trim() === ''
+  );
+
+  // RN-039 / RN-055: Não conformidade crítica exige evidência fotográfica
+  const missingCriticalEvidence = nonConformItems.filter(
+    (i) =>
+      (i.answer?.criticality === 'CRITICAL' || i.answer?.criticality === 'HIGH') &&
+      i.evidences.length === 0
+  );
+
+  const isReadOnly =
+    inspection.status === 'COMPLETED' || inspection.status === 'APPROVED';
+  const hasPendingRules =
+    missingRequired.length > 0 ||
+    missingNonConformObs.length > 0 ||
+    missingCriticalEvidence.length > 0;
+
   const totalEvidences = items.reduce((acc, curr) => acc + curr.evidences.length, 0);
 
+  const formatDateTime = (iso?: string | null) => {
+    if (!iso) return 'Horário não informado';
+    try {
+      const dt = new Date(iso);
+      if (isNaN(dt.getTime())) return iso;
+      const dd = String(dt.getDate()).padStart(2, '0');
+      const mm = String(dt.getMonth() + 1).padStart(2, '0');
+      const yyyy = dt.getFullYear();
+      const hh = String(dt.getHours()).padStart(2, '0');
+      const min = String(dt.getMinutes()).padStart(2, '0');
+      return `${dd}/${mm}/${yyyy} às ${hh}:${min}`;
+    } catch {
+      return iso;
+    }
+  };
+
   const handleComplete = async () => {
+    if (isReadOnly) {
+      Alert.alert(
+        'Vistoria Já Concluída',
+        'Esta inspeção já foi concluída e encontra-se bloqueada para nova submissão.'
+      );
+      return;
+    }
+
     if (missingRequired.length > 0) {
+      const pendingNames = missingRequired.map((i) => `• ${i.title}`).join('\n');
       Alert.alert(
         'Itens Obrigatórios Pendentes',
-        `Ainda existem ${missingRequired.length} item(ns) obrigatório(s) sem resposta. Conclua todas as respostas obrigatórias antes de finalizar.`
+        `Responda todos os itens obrigatórios antes de concluir:\n\n${pendingNames}`
+      );
+      return;
+    }
+
+    if (missingNonConformObs.length > 0) {
+      const pendingObsNames = missingNonConformObs.map((i) => `• ${i.title}`).join('\n');
+      Alert.alert(
+        'Observação Obrigatória (RN-038)',
+        `Itens marcados como Não Conforme exigem observação técnica:\n\n${pendingObsNames}`
+      );
+      return;
+    }
+
+    if (missingCriticalEvidence.length > 0) {
+      const pendingEvNames = missingCriticalEvidence.map((i) => `• ${i.title}`).join('\n');
+      Alert.alert(
+        'Evidência Obrigatória (RN-039 / RN-055)',
+        `Não conformidades de criticidade Alta/Crítica exigem ao menos uma fotografia:\n\n${pendingEvNames}`
       );
       return;
     }
@@ -120,15 +197,28 @@ export const SummaryCompleteScreen: React.FC<SummaryCompleteScreenProps> = ({
           </View>
         </View>
 
-        {/* Missing Required Alert */}
-        {missingRequired.length > 0 && (
+        {/* Missing Required & Business Rules Alert */}
+        {hasPendingRules && !isReadOnly && (
           <View style={styles.warningCard}>
             <Ionicons name="alert-circle" size={24} color={colors.danger} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.warningTitle}>Atenção: Itens Pendentes</Text>
-              <Text style={styles.warningDesc}>
-                {missingRequired.length} item(ns) obrigatório(s) ainda não foram respondidos.
-              </Text>
+              <Text style={styles.warningTitle}>Atenção: Pendências para Conclusão</Text>
+              {missingRequired.length > 0 && (
+                <Text style={styles.warningDesc}>
+                  • {missingRequired.length} item(ns) obrigatório(s) sem resposta:{' '}
+                  {missingRequired.map((i) => i.title).join(', ')}
+                </Text>
+              )}
+              {missingNonConformObs.length > 0 && (
+                <Text style={styles.warningDesc}>
+                  • {missingNonConformObs.length} não conformidade(s) sem observação técnica (RN-038).
+                </Text>
+              )}
+              {missingCriticalEvidence.length > 0 && (
+                <Text style={styles.warningDesc}>
+                  • {missingCriticalEvidence.length} não conformidade(s) Alta/Crítica sem foto de evidência (RN-055).
+                </Text>
+              )}
             </View>
           </View>
         )}
@@ -144,17 +234,50 @@ export const SummaryCompleteScreen: React.FC<SummaryCompleteScreenProps> = ({
             </View>
 
             <View style={styles.nonConformBody}>
-              {nonConformItems.map((nc) => (
-                <View key={nc.id} style={styles.ncItem}>
-                  <Ionicons name="close-circle" size={18} color={colors.danger} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.ncTitle}>{nc.title}</Text>
-                    <Text style={styles.ncObs}>
-                      {nc.answer?.observation || 'Sem observação detalhada registrada.'}
-                    </Text>
+              {nonConformItems.map((nc) => {
+                const critLevel = nc.answer?.criticality || 'MEDIUM';
+                return (
+                  <View key={nc.id} style={styles.ncItem}>
+                    <Ionicons name="close-circle" size={18} color={colors.danger} />
+                    <View style={{ flex: 1 }}>
+                      <View style={styles.ncHeaderRow}>
+                        <Text style={styles.ncTitle}>{nc.title}</Text>
+                        <Badge
+                          label={`Criticidade: ${formatCriticalityLabel(critLevel)}`}
+                          type={critLevel}
+                        />
+                      </View>
+                      <Text style={styles.ncMetaText}>
+                        Inspeção {inspection.code} • {nc.section_name}
+                      </Text>
+                      <Text style={styles.ncObs}>
+                        {nc.answer?.observation || 'Sem observação detalhada registrada.'}
+                      </Text>
+                      {nc.answer?.answered_at && (
+                        <Text style={styles.ncTimestamp}>
+                          Registrado em: {formatDateTime(nc.answer.answered_at)}
+                        </Text>
+                      )}
+                      {nc.evidences.length > 0 && (
+                        <ScrollView
+                          horizontal
+                          showsHorizontalScrollIndicator={false}
+                          style={styles.ncPhotoRow}
+                        >
+                          {nc.evidences.map((photo) => (
+                            <View key={photo.id} style={styles.ncPhotoItem}>
+                              <Image source={{ uri: photo.file_uri }} style={styles.summaryPhoto} />
+                              <Text style={styles.ncPhotoTime}>
+                                {formatDateTime(photo.created_at)}
+                              </Text>
+                            </View>
+                          ))}
+                        </ScrollView>
+                      )}
+                    </View>
                   </View>
-                </View>
-              ))}
+                );
+              })}
             </View>
           </View>
         ) : (
@@ -216,24 +339,31 @@ export const SummaryCompleteScreen: React.FC<SummaryCompleteScreenProps> = ({
 
       {/* Footer */}
       <View style={styles.footer}>
-        <TouchableOpacity
-          style={[
-            styles.finishBtn,
-            missingRequired.length > 0 && styles.finishBtnDisabled,
-          ]}
-          onPress={handleComplete}
-          disabled={loading || missingRequired.length > 0}
-          activeOpacity={0.8}
-        >
-          {loading ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <>
-              <Ionicons name="checkmark-done" size={20} color="#FFFFFF" />
-              <Text style={styles.finishBtnText}>Concluir Vistoria & Gravar Outbox</Text>
-            </>
-          )}
-        </TouchableOpacity>
+        {isReadOnly ? (
+          <View style={[styles.finishBtn, styles.finishBtnDisabled]}>
+            <Ionicons name="lock-closed" size={18} color="#FFFFFF" />
+            <Text style={styles.finishBtnText}>Vistoria Concluída (Somente Leitura)</Text>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={[
+              styles.finishBtn,
+              hasPendingRules && styles.finishBtnDisabled,
+            ]}
+            onPress={handleComplete}
+            disabled={loading || hasPendingRules}
+            activeOpacity={0.8}
+          >
+            {loading ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <>
+                <Ionicons name="checkmark-done" size={20} color="#FFFFFF" />
+                <Text style={styles.finishBtnText}>Concluir Vistoria & Gravar Outbox</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );
@@ -362,15 +492,49 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 8,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#FECACA',
+  },
+  ncHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
   },
   ncTitle: {
     fontSize: 13,
     fontWeight: '700',
     color: colors.text,
+    flex: 1,
+  },
+  ncMetaText: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 2,
   },
   ncObs: {
     fontSize: 12,
     color: colors.danger,
+    marginTop: 4,
+  },
+  ncTimestamp: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  ncPhotoRow: {
+    flexDirection: 'row',
+    marginTop: 8,
+  },
+  ncPhotoItem: {
+    marginRight: 10,
+    alignItems: 'flex-start',
+  },
+  ncPhotoTime: {
+    fontSize: 9,
+    color: colors.textSecondary,
     marginTop: 2,
   },
   successCard: {

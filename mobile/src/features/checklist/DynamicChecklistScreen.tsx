@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../theme';
-import { Inspection, ChecklistItemWithAnswer } from '../../types';
+import { Inspection, ChecklistItemWithAnswer, CriticalityLevel } from '../../types';
 import {
   getChecklistWithAnswers,
   saveAnswer,
@@ -37,6 +37,18 @@ export const DynamicChecklistScreen: React.FC<DynamicChecklistScreenProps> = ({
   const [cameraModalVisible, setCameraModalVisible] = useState(false);
   const [activeCameraItem, setActiveCameraItem] = useState<ChecklistItemWithAnswer | null>(null);
 
+  const isReadOnly =
+    inspection.status === 'COMPLETED' || inspection.status === 'APPROVED';
+  const supportedTypes = [
+    'CONFORMITY',
+    'BOOLEAN',
+    'NUMBER',
+    'SINGLE_CHOICE',
+    'TEXT_SHORT',
+    'TEXT_LONG',
+    'DATE',
+  ];
+
   const loadChecklist = async () => {
     try {
       const data = await getChecklistWithAnswers(inspection.id);
@@ -55,8 +67,16 @@ export const DynamicChecklistScreen: React.FC<DynamicChecklistScreenProps> = ({
     item: ChecklistItemWithAnswer,
     value: string,
     observation?: string,
-    isNonConform?: boolean
+    isNonConform?: boolean,
+    criticality?: CriticalityLevel | null
   ) => {
+    if (isReadOnly) {
+      Alert.alert(
+        'Edição Bloqueada',
+        'Esta inspeção já foi concluída e suas respostas estão bloqueadas para alteração.'
+      );
+      return;
+    }
     try {
       const nonConform =
         isNonConform !== undefined
@@ -66,6 +86,9 @@ export const DynamicChecklistScreen: React.FC<DynamicChecklistScreenProps> = ({
           : false;
 
       const currentObs = observation !== undefined ? observation : item.answer?.observation || '';
+      const resolvedCriticality: CriticalityLevel | null = nonConform
+        ? criticality || item.answer?.criticality || 'MEDIUM'
+        : null;
 
       await saveAnswer({
         inspectionId: inspection.id,
@@ -73,6 +96,7 @@ export const DynamicChecklistScreen: React.FC<DynamicChecklistScreenProps> = ({
         value,
         observation: currentObs,
         isNonConform: nonConform,
+        criticality: resolvedCriticality,
       });
 
       // Atualiza visualmente
@@ -88,6 +112,7 @@ export const DynamicChecklistScreen: React.FC<DynamicChecklistScreenProps> = ({
                   value,
                   observation: currentObs,
                   is_non_conform: nonConform ? 1 : 0,
+                  criticality: resolvedCriticality,
                   answered_at: new Date().toISOString(),
                 },
               }
@@ -103,10 +128,31 @@ export const DynamicChecklistScreen: React.FC<DynamicChecklistScreenProps> = ({
     if (!item.answer?.value) {
       return; // Preenche a resposta primeiro
     }
-    await handleAnswerChange(item, item.answer.value, obs, item.answer.is_non_conform === 1);
+    await handleAnswerChange(
+      item,
+      item.answer.value,
+      obs,
+      item.answer.is_non_conform === 1,
+      item.answer.criticality
+    );
+  };
+
+  const handleCriticalityChange = async (
+    item: ChecklistItemWithAnswer,
+    level: CriticalityLevel
+  ) => {
+    const val = item.answer?.value || 'NON_CONFORM';
+    await handleAnswerChange(item, val, item.answer?.observation || '', true, level);
   };
 
   const handleOpenCamera = (item: ChecklistItemWithAnswer) => {
+    if (isReadOnly) {
+      Alert.alert(
+        'Edição Bloqueada',
+        'Não é possível anexar novas evidências a uma inspeção já concluída.'
+      );
+      return;
+    }
     setActiveCameraItem(item);
     setCameraModalVisible(true);
   };
@@ -171,6 +217,15 @@ export const DynamicChecklistScreen: React.FC<DynamicChecklistScreenProps> = ({
         </View>
         <Text style={styles.progressText}>{percent}% Concluído</Text>
       </View>
+
+      {isReadOnly && (
+        <View style={styles.lockedBanner}>
+          <Ionicons name="lock-closed" size={16} color={colors.primaryDark} />
+          <Text style={styles.lockedBannerText}>
+            Inspeção concluída — respostas bloqueadas para edição (somente leitura).
+          </Text>
+        </View>
+      )}
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
         {Array.from(sectionsMap.entries()).map(([sectionTitle, sectionItems]) => (
@@ -390,19 +445,104 @@ export const DynamicChecklistScreen: React.FC<DynamicChecklistScreenProps> = ({
                         placeholder="AAAA-MM-DD (Ex: 2026-10-25)"
                         placeholderTextColor={colors.textMuted}
                         defaultValue={currentVal || ''}
+                        editable={!isReadOnly}
                         onEndEditing={(e) => handleAnswerChange(item, e.nativeEvent.text)}
                       />
                     )}
+
+                    {/* TIPO DESCONHECIDO / INCOMPATÍVEL (Seção 13.5 / AC-CHECKLIST) */}
+                    {!supportedTypes.includes(item.response_type) && (
+                      <View style={styles.unsupportedBox}>
+                        <Ionicons name="alert-circle-outline" size={18} color={colors.danger} />
+                        <Text style={styles.unsupportedText}>
+                          Tipo de resposta ({item.response_type}) incompatível com esta versão do aplicativo.
+                        </Text>
+                      </View>
+                    )}
                   </View>
+
+                  {/* Painel de Não Conformidade: Criticidade e Evidência (PBI-046) */}
+                  {isNonConform && (
+                    <View style={styles.nonConformBox}>
+                      <View style={styles.nonConformHeaderRow}>
+                        <Ionicons name="warning" size={16} color={colors.danger} />
+                        <Text style={styles.nonConformBoxTitle}>
+                          Registro de Não Conformidade — Criticidade:
+                        </Text>
+                      </View>
+
+                      <View style={styles.criticalityRow}>
+                        {(
+                          [
+                            { key: 'LOW', label: 'Baixa' },
+                            { key: 'MEDIUM', label: 'Média' },
+                            { key: 'HIGH', label: 'Alta' },
+                            { key: 'CRITICAL', label: 'Crítica' },
+                          ] as { key: CriticalityLevel; label: string }[]
+                        ).map((crit) => {
+                          const selected =
+                            (item.answer?.criticality || 'MEDIUM') === crit.key;
+                          return (
+                            <TouchableOpacity
+                              key={crit.key}
+                              style={[
+                                styles.criticalityChip,
+                                selected && styles.criticalityChipActive,
+                              ]}
+                              onPress={() => handleCriticalityChange(item, crit.key)}
+                            >
+                              <Text
+                                style={[
+                                  styles.criticalityChipText,
+                                  selected && styles.criticalityChipTextActive,
+                                ]}
+                              >
+                                {crit.label}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+
+                      {item.evidences.length === 0 ? (
+                        <TouchableOpacity
+                          style={styles.ncEvidenceAlert}
+                          onPress={() => handleOpenCamera(item)}
+                        >
+                          <Ionicons name="camera-outline" size={16} color={colors.danger} />
+                          <Text style={styles.ncEvidenceAlertText}>
+                            Evidência recomendada: toque para anexar foto da não conformidade
+                          </Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <View style={styles.ncEvidenceOk}>
+                          <Ionicons name="checkmark-circle" size={15} color={colors.success} />
+                          <Text style={styles.ncEvidenceOkText}>
+                            {item.evidences.length} evidência(s) fotográfica(s) vinculada(s)
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
 
                   {/* Observações / Anotações */}
                   <View style={styles.obsSection}>
-                    <Text style={styles.obsLabel}>Observações do item:</Text>
+                    <Text style={styles.obsLabel}>
+                      Observações do item{isNonConform ? ' (* obrigatório para Não Conforme)' : ''}:
+                    </Text>
                     <TextInput
-                      style={styles.obsInput}
-                      placeholder="Adicione observações técnicas se houver..."
+                      style={[
+                        styles.obsInput,
+                        isNonConform && !item.answer?.observation?.trim() && styles.obsInputRequired,
+                      ]}
+                      placeholder={
+                        isNonConform
+                          ? 'Descreva obrigatoriamente o motivo da não conformidade...'
+                          : 'Adicione observações técnicas se houver...'
+                      }
                       placeholderTextColor={colors.textMuted}
                       defaultValue={item.answer?.observation || ''}
+                      editable={!isReadOnly}
                       onEndEditing={(e) => handleObservationChange(item, e.nativeEvent.text)}
                     />
                   </View>
@@ -527,6 +667,42 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.primary,
     fontFamily: 'monospace',
+  },
+  lockedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.primaryLight,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#B2DFDB',
+  },
+  lockedBannerText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.primaryDark,
+    flex: 1,
+  },
+  unsupportedBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    padding: 10,
+    borderRadius: 6,
+  },
+  unsupportedText: {
+    fontSize: 12,
+    color: colors.danger,
+    fontWeight: '600',
+    flex: 1,
+  },
+  obsInputRequired: {
+    borderColor: colors.danger,
+    backgroundColor: '#FFF5F5',
   },
   scroll: {
     flex: 1,
@@ -668,6 +844,77 @@ const styles = StyleSheet.create({
   textArea: {
     height: 70,
     textAlignVertical: 'top',
+  },
+  nonConformBox: {
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: 6,
+    padding: 10,
+    marginTop: 6,
+    marginBottom: 4,
+  },
+  nonConformHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
+  nonConformBoxTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.danger,
+  },
+  criticalityRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 8,
+  },
+  criticalityChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+    backgroundColor: '#FFFFFF',
+  },
+  criticalityChipActive: {
+    backgroundColor: colors.danger,
+    borderColor: colors.danger,
+  },
+  criticalityChipText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.danger,
+  },
+  criticalityChipTextActive: {
+    color: '#FFFFFF',
+  },
+  ncEvidenceAlert: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 4,
+  },
+  ncEvidenceAlertText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#991B1B',
+    flex: 1,
+  },
+  ncEvidenceOk: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  ncEvidenceOkText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.success,
   },
   obsSection: {
     marginTop: 8,
