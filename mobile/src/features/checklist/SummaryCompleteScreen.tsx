@@ -134,9 +134,10 @@ export const SummaryCompleteScreen: React.FC<SummaryCompleteScreenProps> = ({
     try {
       setLoading(true);
 
-      // Coleta GPS final de conclusão da ordem de serviço
+      // Coleta GPS final de conclusão da ordem de serviço (RN-061 / RN-062)
       let lat: number | null = null;
       let lon: number | null = null;
+      let acc: number | null = null;
 
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
@@ -146,12 +147,13 @@ export const SummaryCompleteScreen: React.FC<SummaryCompleteScreenProps> = ({
           });
           lat = loc.coords.latitude;
           lon = loc.coords.longitude;
+          acc = loc.coords.accuracy ?? null;
         }
       } catch (locErr) {
         console.log('GPS indisponível no término:', locErr);
       }
 
-      await completeInspection(inspection.id, lat, lon);
+      await completeInspection(inspection.id, lat, lon, acc);
       const updated = await getInspectionById(inspection.id);
 
       Alert.alert(
