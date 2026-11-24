@@ -8,6 +8,7 @@ import {
   OutboxRecord,
   OutboxEventType,
   ChecklistItemWithAnswer,
+  CriticalityLevel,
   User,
 } from './types';
 
@@ -70,6 +71,7 @@ export async function initDatabase() {
       value TEXT NOT NULL,
       observation TEXT,
       is_non_conform INTEGER NOT NULL DEFAULT 0,
+      criticality TEXT,
       answered_at TEXT NOT NULL,
       UNIQUE(inspection_id, item_id),
       FOREIGN KEY (inspection_id) REFERENCES inspections(id) ON DELETE CASCADE,
@@ -118,6 +120,12 @@ export async function initDatabase() {
       updated_at TEXT NOT NULL
     );
   `);
+
+  try {
+    await db.execAsync(`ALTER TABLE inspection_answers ADD COLUMN criticality TEXT;`);
+  } catch {
+    // Coluna criticality já existe no banco local
+  }
 
   await seedDatabaseIfEmpty(db);
 }
@@ -550,21 +558,26 @@ export async function saveAnswer(params: {
   value: string;
   observation?: string | null;
   isNonConform: boolean;
+  criticality?: CriticalityLevel | null;
 }): Promise<InspectionAnswer> {
   const db = await getDatabase();
   const answerId = Crypto.randomUUID();
   const now = new Date().toISOString();
   const nonConformInt = params.isNonConform ? 1 : 0;
+  const resolvedCriticality = params.isNonConform
+    ? params.criticality || 'MEDIUM'
+    : null;
 
   // UPSERT
   await db.runAsync(
     `INSERT INTO inspection_answers (
-      id, inspection_id, item_id, value, observation, is_non_conform, answered_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      id, inspection_id, item_id, value, observation, is_non_conform, criticality, answered_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(inspection_id, item_id) DO UPDATE SET
       value = excluded.value,
       observation = excluded.observation,
       is_non_conform = excluded.is_non_conform,
+      criticality = excluded.criticality,
       answered_at = excluded.answered_at`,
     answerId,
     params.inspectionId,
@@ -572,6 +585,7 @@ export async function saveAnswer(params: {
     params.value,
     params.observation || null,
     nonConformInt,
+    resolvedCriticality,
     now
   );
 
@@ -585,6 +599,7 @@ export async function saveAnswer(params: {
       value: params.value,
       observation: params.observation,
       isNonConform: params.isNonConform,
+      criticality: resolvedCriticality,
       answeredAt: now,
     }
   );
@@ -602,6 +617,7 @@ export async function saveAnswer(params: {
     value: params.value,
     observation: params.observation,
     is_non_conform: nonConformInt,
+    criticality: resolvedCriticality,
     answered_at: now,
   };
 }

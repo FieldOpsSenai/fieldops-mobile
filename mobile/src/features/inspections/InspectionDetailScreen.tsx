@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,13 +7,14 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../theme';
-import { Badge } from '../../components/Badge';
-import { Inspection } from '../../types';
-import { startInspection, getInspectionById } from '../../database';
+import { Badge, formatCriticalityLabel } from '../../components/Badge';
+import { Inspection, ChecklistItemWithAnswer } from '../../types';
+import { startInspection, getInspectionById, getChecklistWithAnswers } from '../../database';
 import { NativeScannerModal } from '../../components/NativeScannerModal';
 
 interface InspectionDetailScreenProps {
@@ -33,6 +34,41 @@ export const InspectionDetailScreen: React.FC<InspectionDetailScreenProps> = ({
 }) => {
   const [scannerVisible, setScannerVisible] = useState(false);
   const [loadingGps, setLoadingGps] = useState(false);
+  const [checklistItems, setChecklistItems] = useState<ChecklistItemWithAnswer[]>([]);
+
+  useEffect(() => {
+    getChecklistWithAnswers(inspection.id)
+      .then(setChecklistItems)
+      .catch((err) => console.log('Erro ao carregar acompanhamento da inspeção:', err));
+  }, [inspection.id, inspection.status]);
+
+  const nonConformities = checklistItems.filter(
+    (i) => i.answer?.is_non_conform === 1 || i.answer?.value === 'NON_CONFORM'
+  );
+
+  const allEvidences = checklistItems.flatMap((i) =>
+    i.evidences.map((ev) => ({
+      ...ev,
+      itemTitle: i.title,
+      sectionName: i.section_name,
+    }))
+  );
+
+  const formatDateTime = (iso?: string | null) => {
+    if (!iso) return 'Horário não informado';
+    try {
+      const dt = new Date(iso);
+      if (isNaN(dt.getTime())) return iso;
+      const dd = String(dt.getDate()).padStart(2, '0');
+      const mm = String(dt.getMonth() + 1).padStart(2, '0');
+      const yyyy = dt.getFullYear();
+      const hh = String(dt.getHours()).padStart(2, '0');
+      const min = String(dt.getMinutes()).padStart(2, '0');
+      return `${dd}/${mm}/${yyyy} às ${hh}:${min}`;
+    } catch {
+      return iso;
+    }
+  };
 
   const handleStartWithGps = async () => {
     try {
@@ -165,6 +201,80 @@ export const InspectionDetailScreen: React.FC<InspectionDetailScreenProps> = ({
             </View>
           </View>
         )}
+
+        {/* Acompanhamento: Evidências e Não Conformidades (PBI-047) */}
+        <View style={styles.cardSection}>
+          <Text style={styles.sectionTitle}>
+            Acompanhamento de Não Conformidades ({nonConformities.length})
+          </Text>
+
+          {nonConformities.length === 0 ? (
+            <View style={styles.emptyTrackingRow}>
+              <Ionicons name="checkmark-circle-outline" size={18} color={colors.success} />
+              <Text style={styles.emptyTrackingText}>
+                Nenhuma não conformidade registrada para a inspeção {inspection.code}.
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.trackingList}>
+              {nonConformities.map((nc) => {
+                const crit = nc.answer?.criticality || 'MEDIUM';
+                return (
+                  <View key={nc.id} style={styles.ncTrackingCard}>
+                    <View style={styles.ncTrackingHeader}>
+                      <Text style={styles.ncTrackingItemTitle}>{nc.title}</Text>
+                      <Badge
+                        label={`Criticidade: ${formatCriticalityLabel(crit)}`}
+                        type={crit}
+                      />
+                    </View>
+                    <Text style={styles.ncTrackingOrigin}>
+                      Inspeção {inspection.code} • {nc.section_name}
+                    </Text>
+                    <Text style={styles.ncTrackingDesc}>
+                      {nc.answer?.observation || 'Sem descrição detalhada registrada.'}
+                    </Text>
+                    {nc.answer?.answered_at && (
+                      <Text style={styles.ncTrackingTime}>
+                        Data/Hora: {formatDateTime(nc.answer.answered_at)}
+                      </Text>
+                    )}
+                  </View>
+                );
+              })}
+            </View>
+          )}
+
+          <View style={styles.evidenceSubSection}>
+            <Text style={styles.sectionTitle}>
+              Evidências Fotográficas ({allEvidences.length})
+            </Text>
+
+            {allEvidences.length === 0 ? (
+              <Text style={styles.emptyEvidenceText}>
+                Nenhuma fotografia de evidência anexada até o momento.
+              </Text>
+            ) : (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.evidenceGalleryRow}
+              >
+                {allEvidences.map((ev) => (
+                  <View key={ev.id} style={styles.evidenceCard}>
+                    <Image source={{ uri: ev.file_uri }} style={styles.evidenceThumb} />
+                    <Text style={styles.evidenceItemName} numberOfLines={1}>
+                      {ev.itemTitle}
+                    </Text>
+                    <Text style={styles.evidenceInspCode}>
+                      {inspection.code} • {formatDateTime(ev.created_at)}
+                    </Text>
+                  </View>
+                ))}
+              </ScrollView>
+            )}
+          </View>
+        </View>
       </ScrollView>
 
       {/* Action Footer */}
@@ -357,6 +467,97 @@ const styles = StyleSheet.create({
     color: colors.success,
     fontWeight: '600',
     fontFamily: 'monospace',
+  },
+  emptyTrackingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.successLight,
+    padding: 10,
+    borderRadius: 6,
+  },
+  emptyTrackingText: {
+    fontSize: 12,
+    color: colors.success,
+    fontWeight: '600',
+    flex: 1,
+  },
+  trackingList: {
+    gap: 10,
+  },
+  ncTrackingCard: {
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: 6,
+    padding: 10,
+  },
+  ncTrackingHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  ncTrackingItemTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.text,
+    flex: 1,
+  },
+  ncTrackingOrigin: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  ncTrackingDesc: {
+    fontSize: 12,
+    color: colors.danger,
+    marginTop: 4,
+  },
+  ncTrackingTime: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 3,
+  },
+  evidenceSubSection: {
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.borderLight,
+  },
+  emptyEvidenceText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  evidenceGalleryRow: {
+    flexDirection: 'row',
+  },
+  evidenceCard: {
+    width: 140,
+    marginRight: 10,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 6,
+    padding: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  evidenceThumb: {
+    width: '100%',
+    height: 84,
+    borderRadius: 4,
+    backgroundColor: '#E2E8F0',
+    marginBottom: 4,
+  },
+  evidenceItemName: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  evidenceInspCode: {
+    fontSize: 10,
+    color: colors.textSecondary,
+    marginTop: 2,
   },
   footer: {
     backgroundColor: '#FFFFFF',

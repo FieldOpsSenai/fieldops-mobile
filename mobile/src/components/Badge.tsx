@@ -8,6 +8,20 @@ interface BadgeProps {
   size?: 'small' | 'medium';
 }
 
+export const formatCriticalityLabel = (level?: string | null): string => {
+  switch ((level || 'MEDIUM').toUpperCase()) {
+    case 'CRITICAL':
+      return 'CRÍTICA';
+    case 'HIGH':
+      return 'ALTA';
+    case 'LOW':
+      return 'BAIXA';
+    case 'MEDIUM':
+    default:
+      return 'MÉDIA';
+  }
+};
+
 export const Badge: React.FC<BadgeProps> = ({ label, type, size = 'small' }) => {
   const colorConfig = statusColors[type || label] || { bg: '#F1F5F9', text: '#475569' };
 
