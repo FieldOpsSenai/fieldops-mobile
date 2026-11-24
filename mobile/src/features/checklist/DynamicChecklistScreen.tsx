@@ -37,6 +37,18 @@ export const DynamicChecklistScreen: React.FC<DynamicChecklistScreenProps> = ({
   const [cameraModalVisible, setCameraModalVisible] = useState(false);
   const [activeCameraItem, setActiveCameraItem] = useState<ChecklistItemWithAnswer | null>(null);
 
+  const isReadOnly =
+    inspection.status === 'COMPLETED' || inspection.status === 'APPROVED';
+  const supportedTypes = [
+    'CONFORMITY',
+    'BOOLEAN',
+    'NUMBER',
+    'SINGLE_CHOICE',
+    'TEXT_SHORT',
+    'TEXT_LONG',
+    'DATE',
+  ];
+
   const loadChecklist = async () => {
     try {
       const data = await getChecklistWithAnswers(inspection.id);
@@ -58,6 +70,13 @@ export const DynamicChecklistScreen: React.FC<DynamicChecklistScreenProps> = ({
     isNonConform?: boolean,
     criticality?: CriticalityLevel | null
   ) => {
+    if (isReadOnly) {
+      Alert.alert(
+        'Edição Bloqueada',
+        'Esta inspeção já foi concluída e suas respostas estão bloqueadas para alteração.'
+      );
+      return;
+    }
     try {
       const nonConform =
         isNonConform !== undefined
@@ -127,6 +146,13 @@ export const DynamicChecklistScreen: React.FC<DynamicChecklistScreenProps> = ({
   };
 
   const handleOpenCamera = (item: ChecklistItemWithAnswer) => {
+    if (isReadOnly) {
+      Alert.alert(
+        'Edição Bloqueada',
+        'Não é possível anexar novas evidências a uma inspeção já concluída.'
+      );
+      return;
+    }
     setActiveCameraItem(item);
     setCameraModalVisible(true);
   };
@@ -191,6 +217,15 @@ export const DynamicChecklistScreen: React.FC<DynamicChecklistScreenProps> = ({
         </View>
         <Text style={styles.progressText}>{percent}% Concluído</Text>
       </View>
+
+      {isReadOnly && (
+        <View style={styles.lockedBanner}>
+          <Ionicons name="lock-closed" size={16} color={colors.primaryDark} />
+          <Text style={styles.lockedBannerText}>
+            Inspeção concluída — respostas bloqueadas para edição (somente leitura).
+          </Text>
+        </View>
+      )}
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
         {Array.from(sectionsMap.entries()).map(([sectionTitle, sectionItems]) => (
@@ -410,8 +445,19 @@ export const DynamicChecklistScreen: React.FC<DynamicChecklistScreenProps> = ({
                         placeholder="AAAA-MM-DD (Ex: 2026-10-25)"
                         placeholderTextColor={colors.textMuted}
                         defaultValue={currentVal || ''}
+                        editable={!isReadOnly}
                         onEndEditing={(e) => handleAnswerChange(item, e.nativeEvent.text)}
                       />
+                    )}
+
+                    {/* TIPO DESCONHECIDO / INCOMPATÍVEL (Seção 13.5 / AC-CHECKLIST) */}
+                    {!supportedTypes.includes(item.response_type) && (
+                      <View style={styles.unsupportedBox}>
+                        <Ionicons name="alert-circle-outline" size={18} color={colors.danger} />
+                        <Text style={styles.unsupportedText}>
+                          Tipo de resposta ({item.response_type}) incompatível com esta versão do aplicativo.
+                        </Text>
+                      </View>
                     )}
                   </View>
 
@@ -481,12 +527,22 @@ export const DynamicChecklistScreen: React.FC<DynamicChecklistScreenProps> = ({
 
                   {/* Observações / Anotações */}
                   <View style={styles.obsSection}>
-                    <Text style={styles.obsLabel}>Observações do item:</Text>
+                    <Text style={styles.obsLabel}>
+                      Observações do item{isNonConform ? ' (* obrigatório para Não Conforme)' : ''}:
+                    </Text>
                     <TextInput
-                      style={styles.obsInput}
-                      placeholder="Adicione observações técnicas se houver..."
+                      style={[
+                        styles.obsInput,
+                        isNonConform && !item.answer?.observation?.trim() && styles.obsInputRequired,
+                      ]}
+                      placeholder={
+                        isNonConform
+                          ? 'Descreva obrigatoriamente o motivo da não conformidade...'
+                          : 'Adicione observações técnicas se houver...'
+                      }
                       placeholderTextColor={colors.textMuted}
                       defaultValue={item.answer?.observation || ''}
+                      editable={!isReadOnly}
                       onEndEditing={(e) => handleObservationChange(item, e.nativeEvent.text)}
                     />
                   </View>
@@ -611,6 +667,42 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.primary,
     fontFamily: 'monospace',
+  },
+  lockedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.primaryLight,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#B2DFDB',
+  },
+  lockedBannerText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.primaryDark,
+    flex: 1,
+  },
+  unsupportedBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    padding: 10,
+    borderRadius: 6,
+  },
+  unsupportedText: {
+    fontSize: 12,
+    color: colors.danger,
+    fontWeight: '600',
+    flex: 1,
+  },
+  obsInputRequired: {
+    borderColor: colors.danger,
+    backgroundColor: '#FFF5F5',
   },
   scroll: {
     flex: 1,

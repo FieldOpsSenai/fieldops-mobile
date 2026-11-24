@@ -42,7 +42,41 @@ export const SummaryCompleteScreen: React.FC<SummaryCompleteScreenProps> = ({
     (i) => i.answer?.is_non_conform === 1 || i.answer?.value === 'NON_CONFORM'
   );
 
-  const missingRequired = items.filter((i) => i.required === 1 && !i.answer?.value);
+  const supportedTypes = [
+    'CONFORMITY',
+    'BOOLEAN',
+    'NUMBER',
+    'SINGLE_CHOICE',
+    'TEXT_SHORT',
+    'TEXT_LONG',
+    'DATE',
+  ];
+
+  const missingRequired = items.filter(
+    (i) =>
+      i.required === 1 &&
+      (!i.answer?.value || !supportedTypes.includes(i.response_type))
+  );
+
+  // RN-038: Resposta não conforme exige observação
+  const missingNonConformObs = nonConformItems.filter(
+    (i) => !i.answer?.observation || i.answer.observation.trim() === ''
+  );
+
+  // RN-039 / RN-055: Não conformidade crítica exige evidência fotográfica
+  const missingCriticalEvidence = nonConformItems.filter(
+    (i) =>
+      (i.answer?.criticality === 'CRITICAL' || i.answer?.criticality === 'HIGH') &&
+      i.evidences.length === 0
+  );
+
+  const isReadOnly =
+    inspection.status === 'COMPLETED' || inspection.status === 'APPROVED';
+  const hasPendingRules =
+    missingRequired.length > 0 ||
+    missingNonConformObs.length > 0 ||
+    missingCriticalEvidence.length > 0;
+
   const totalEvidences = items.reduce((acc, curr) => acc + curr.evidences.length, 0);
 
   const formatDateTime = (iso?: string | null) => {
@@ -62,10 +96,37 @@ export const SummaryCompleteScreen: React.FC<SummaryCompleteScreenProps> = ({
   };
 
   const handleComplete = async () => {
+    if (isReadOnly) {
+      Alert.alert(
+        'Vistoria Já Concluída',
+        'Esta inspeção já foi concluída e encontra-se bloqueada para nova submissão.'
+      );
+      return;
+    }
+
     if (missingRequired.length > 0) {
+      const pendingNames = missingRequired.map((i) => `• ${i.title}`).join('\n');
       Alert.alert(
         'Itens Obrigatórios Pendentes',
-        `Ainda existem ${missingRequired.length} item(ns) obrigatório(s) sem resposta. Conclua todas as respostas obrigatórias antes de finalizar.`
+        `Responda todos os itens obrigatórios antes de concluir:\n\n${pendingNames}`
+      );
+      return;
+    }
+
+    if (missingNonConformObs.length > 0) {
+      const pendingObsNames = missingNonConformObs.map((i) => `• ${i.title}`).join('\n');
+      Alert.alert(
+        'Observação Obrigatória (RN-038)',
+        `Itens marcados como Não Conforme exigem observação técnica:\n\n${pendingObsNames}`
+      );
+      return;
+    }
+
+    if (missingCriticalEvidence.length > 0) {
+      const pendingEvNames = missingCriticalEvidence.map((i) => `• ${i.title}`).join('\n');
+      Alert.alert(
+        'Evidência Obrigatória (RN-039 / RN-055)',
+        `Não conformidades de criticidade Alta/Crítica exigem ao menos uma fotografia:\n\n${pendingEvNames}`
       );
       return;
     }
@@ -136,15 +197,28 @@ export const SummaryCompleteScreen: React.FC<SummaryCompleteScreenProps> = ({
           </View>
         </View>
 
-        {/* Missing Required Alert */}
-        {missingRequired.length > 0 && (
+        {/* Missing Required & Business Rules Alert */}
+        {hasPendingRules && !isReadOnly && (
           <View style={styles.warningCard}>
             <Ionicons name="alert-circle" size={24} color={colors.danger} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.warningTitle}>Atenção: Itens Pendentes</Text>
-              <Text style={styles.warningDesc}>
-                {missingRequired.length} item(ns) obrigatório(s) ainda não foram respondidos.
-              </Text>
+              <Text style={styles.warningTitle}>Atenção: Pendências para Conclusão</Text>
+              {missingRequired.length > 0 && (
+                <Text style={styles.warningDesc}>
+                  • {missingRequired.length} item(ns) obrigatório(s) sem resposta:{' '}
+                  {missingRequired.map((i) => i.title).join(', ')}
+                </Text>
+              )}
+              {missingNonConformObs.length > 0 && (
+                <Text style={styles.warningDesc}>
+                  • {missingNonConformObs.length} não conformidade(s) sem observação técnica (RN-038).
+                </Text>
+              )}
+              {missingCriticalEvidence.length > 0 && (
+                <Text style={styles.warningDesc}>
+                  • {missingCriticalEvidence.length} não conformidade(s) Alta/Crítica sem foto de evidência (RN-055).
+                </Text>
+              )}
             </View>
           </View>
         )}
@@ -265,24 +339,31 @@ export const SummaryCompleteScreen: React.FC<SummaryCompleteScreenProps> = ({
 
       {/* Footer */}
       <View style={styles.footer}>
-        <TouchableOpacity
-          style={[
-            styles.finishBtn,
-            missingRequired.length > 0 && styles.finishBtnDisabled,
-          ]}
-          onPress={handleComplete}
-          disabled={loading || missingRequired.length > 0}
-          activeOpacity={0.8}
-        >
-          {loading ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <>
-              <Ionicons name="checkmark-done" size={20} color="#FFFFFF" />
-              <Text style={styles.finishBtnText}>Concluir Vistoria & Gravar Outbox</Text>
-            </>
-          )}
-        </TouchableOpacity>
+        {isReadOnly ? (
+          <View style={[styles.finishBtn, styles.finishBtnDisabled]}>
+            <Ionicons name="lock-closed" size={18} color="#FFFFFF" />
+            <Text style={styles.finishBtnText}>Vistoria Concluída (Somente Leitura)</Text>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={[
+              styles.finishBtn,
+              hasPendingRules && styles.finishBtnDisabled,
+            ]}
+            onPress={handleComplete}
+            disabled={loading || hasPendingRules}
+            activeOpacity={0.8}
+          >
+            {loading ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <>
+                <Ionicons name="checkmark-done" size={20} color="#FFFFFF" />
+                <Text style={styles.finishBtnText}>Concluir Vistoria & Gravar Outbox</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );
