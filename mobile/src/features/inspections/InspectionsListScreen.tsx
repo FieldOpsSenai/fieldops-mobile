@@ -24,7 +24,9 @@ export const InspectionsListScreen: React.FC<InspectionsListScreenProps> = ({
 }) => {
   const [inspections, setInspections] = useState<Inspection[]>([]);
   const [search, setSearch] = useState('');
-  const [activeFilter, setActiveFilter] = useState<'ALL' | 'IN_PROGRESS' | 'SCHEDULED' | 'COMPLETED'>('ALL');
+  const [activeFilter, setActiveFilter] = useState<
+    'ALL' | 'IN_PROGRESS' | 'SCHEDULED' | 'COMPLETED' | 'REJECTED'
+  >('ALL');
   const [priorityFilter, setPriorityFilter] = useState<'ALL' | 'HIGH' | 'MEDIUM' | 'LOW'>('ALL');
   const [dateFilter, setDateFilter] = useState<string>('ALL');
   const [customDateText, setCustomDateText] = useState<string>('');
@@ -71,6 +73,7 @@ export const InspectionsListScreen: React.FC<InspectionsListScreenProps> = ({
     { key: 'IN_PROGRESS', label: 'Em Andamento' },
     { key: 'SCHEDULED', label: 'Agendadas' },
     { key: 'COMPLETED', label: 'Concluídas' },
+    { key: 'REJECTED', label: 'Reprovadas' },
   ];
 
   const priorityOptions = [
@@ -227,7 +230,19 @@ export const InspectionsListScreen: React.FC<InspectionsListScreenProps> = ({
           >
             <View style={styles.cardHeader}>
               <Text style={styles.codeText}>{item.code}</Text>
-              <Badge label={item.status} type={item.status} />
+              <View style={styles.headerBadgesRow}>
+                <Badge
+                  label={
+                    item.sync_status === 'PENDING'
+                      ? 'AGUARDANDO ENVIO'
+                      : item.sync_status === 'ERROR'
+                      ? 'FALHA NO ENVIO'
+                      : 'SINCRONIZADO'
+                  }
+                  type={item.sync_status}
+                />
+                <Badge label={item.status} type={item.status} />
+              </View>
             </View>
 
             <Text style={styles.titleText}>{item.title}</Text>
@@ -383,6 +398,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 6,
+    gap: 6,
+  },
+  headerBadgesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
   },
   codeText: {
     fontFamily: 'monospace',
