@@ -202,7 +202,9 @@ export const InspectionsListScreen: React.FC<InspectionsListScreenProps> = ({
         {hasActiveFilters && (
           <TouchableOpacity style={styles.clearFiltersBtn} onPress={clearAllFilters}>
             <Ionicons name="refresh-outline" size={14} color={colors.primary} />
-            <Text style={styles.clearFiltersText}>Limpar filtros ativos</Text>
+            <Text style={styles.clearFiltersText}>
+              Limpar filtros ativos ({inspections.length} resultado{inspections.length === 1 ? '' : 's'})
+            </Text>
           </TouchableOpacity>
         )}
       </View>
