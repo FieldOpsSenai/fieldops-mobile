@@ -54,3 +54,5 @@ Thumbs.db
 # Expo generated files
 web-build/
 dist/
+*.apk
+*.aab

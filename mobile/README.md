@@ -75,6 +75,18 @@ Também é possível iniciar diretamente a Web:
 npm run web
 ```
 
+## Gerar APK (sem Expo Go)
+
+1. Ajuste `EXPO_PUBLIC_API_URL_MOBILE` em `eas.json` com a URL da API na AWS.
+2. Faça login na Expo: `npx eas-cli login`
+3. Gere o APK na nuvem da Expo:
+
+```bash
+npm run build:apk
+```
+
+Ao final, o EAS mostra um link/QR Code para baixar o `.apk` e instalar no Android.
+
 ## SQLite na Web
 
 O `expo-sqlite` utiliza WebAssembly no navegador.
