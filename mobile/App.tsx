@@ -12,7 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import NetInfo from '@react-native-community/netinfo';
 import { colors } from './src/theme';
 import { initDatabase, getSyncStats, getInspectionById } from './src/database';
-import { loadSessionTokens, logoutFromApi } from './src/api';
+import { loadSessionTokens, logoutFromApi, initApiUrl } from './src/api';
 import { pullServerData } from './src/sync';
 import { Inspection, User } from './src/types';
 import { Header } from './src/components/Header';
@@ -46,6 +46,7 @@ export default function App() {
     async function setup() {
       try {
         await initDatabase();
+        await initApiUrl();
         const savedUser = await loadSessionTokens();
         if (savedUser) {
           setCurrentUser(savedUser);

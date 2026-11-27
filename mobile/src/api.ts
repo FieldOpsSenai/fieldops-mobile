@@ -6,12 +6,58 @@ import {
   clearAuthSession,
   getInspectionById,
   getAnswersForInspection,
+  getSavedApiUrl,
+  saveCustomApiUrl,
 } from './database';
 
-export const API_URL =
+export const DEFAULT_API_URL =
   Platform.OS === 'web'
     ? process.env.EXPO_PUBLIC_API_URL_WEB ?? 'http://localhost:8080'
-    : process.env.EXPO_PUBLIC_API_URL_MOBILE ?? 'http://10.0.2.2:8080';
+    : process.env.EXPO_PUBLIC_API_URL_MOBILE ?? 'http://34.229.97.191:8080';
+
+export const API_URL = DEFAULT_API_URL;
+
+let runtimeApiUrl: string = DEFAULT_API_URL;
+
+export function normalizeApiBaseUrl(raw: string): string {
+  let cleaned = raw.trim();
+  if (!cleaned) return DEFAULT_API_URL;
+  if (!/^https?:\/\//i.test(cleaned)) {
+    cleaned = `http://${cleaned}`;
+  }
+  cleaned = cleaned
+    .replace(/\/swagger-ui\.html.*$/i, '')
+    .replace(/\/swagger-ui\/.*$/i, '')
+    .replace(/\/api\/v1.*$/i, '')
+    .replace(/\/+$/, '');
+  return cleaned || DEFAULT_API_URL;
+}
+
+export function getApiUrl(): string {
+  return runtimeApiUrl;
+}
+
+export async function initApiUrl(): Promise<string> {
+  try {
+    const saved = await getSavedApiUrl();
+    runtimeApiUrl = saved ? normalizeApiBaseUrl(saved) : DEFAULT_API_URL;
+  } catch {
+    runtimeApiUrl = DEFAULT_API_URL;
+  }
+  return runtimeApiUrl;
+}
+
+export async function updateApiUrl(customUrl: string | null): Promise<string> {
+  if (!customUrl || !customUrl.trim()) {
+    await saveCustomApiUrl(null);
+    runtimeApiUrl = DEFAULT_API_URL;
+    return runtimeApiUrl;
+  }
+  const normalized = normalizeApiBaseUrl(customUrl);
+  await saveCustomApiUrl(normalized);
+  runtimeApiUrl = normalized;
+  return runtimeApiUrl;
+}
 
 let memoryAccessToken: string | null = null;
 let memoryRefreshToken: string | null = null;
@@ -110,7 +156,7 @@ async function rawLoginRequest(email: string, senha: string): Promise<Response> 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 6000);
   try {
-    return await fetch(`${API_URL}/api/v1/auth/login`, {
+    return await fetch(`${getApiUrl()}/api/v1/auth/login`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -154,7 +200,7 @@ async function ensureTechnicianOnBackend(email: string, senha: string): Promise<
     const cleanEmail = email.trim();
     const cleanPass = senha.trim().length >= 6 ? senha.trim() : '123456';
 
-    const listRes = await fetch(`${API_URL}/api/v1/usuarios`, {
+    const listRes = await fetch(`${getApiUrl()}/api/v1/usuarios`, {
       method: 'GET',
       headers: { Authorization: `Bearer ${adminToken}` },
     });
@@ -165,7 +211,7 @@ async function ensureTechnicianOnBackend(email: string, senha: string): Promise<
         (u) => u.email && u.email.toLowerCase() === cleanEmail.toLowerCase()
       );
       if (existing && existing.id != null) {
-        await fetch(`${API_URL}/api/v1/usuarios/${existing.id}`, {
+        await fetch(`${getApiUrl()}/api/v1/usuarios/${existing.id}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -183,7 +229,7 @@ async function ensureTechnicianOnBackend(email: string, senha: string): Promise<
       }
     }
 
-    const createRes = await fetch(`${API_URL}/api/v1/usuarios`, {
+    const createRes = await fetch(`${getApiUrl()}/api/v1/usuarios`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -262,7 +308,7 @@ export async function refreshAccessToken(): Promise<string | null> {
   if (!memoryRefreshToken) return null;
 
   try {
-    const response = await fetch(`${API_URL}/api/v1/auth/refresh`, {
+    const response = await fetch(`${getApiUrl()}/api/v1/auth/refresh`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -336,7 +382,7 @@ export async function logoutFromApi(): Promise<void> {
   await loadSessionTokens();
   try {
     if (memoryAccessToken) {
-      await fetch(`${API_URL}/api/v1/auth/logout`, {
+      await fetch(`${getApiUrl()}/api/v1/auth/logout`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${memoryAccessToken}`,
@@ -373,7 +419,7 @@ export async function fetchWithAuth(
     }
 
     try {
-      const res = await fetch(`${API_URL}${endpoint}`, {
+      const res = await fetch(`${getApiUrl()}${endpoint}`, {
         ...options,
         headers,
         signal: controller.signal,

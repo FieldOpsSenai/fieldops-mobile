@@ -122,6 +122,11 @@ export async function initDatabase() {
       refresh_token TEXT,
       updated_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY NOT NULL,
+      value TEXT NOT NULL
+    );
   `);
 
   try {
@@ -1241,5 +1246,26 @@ export async function syncServerDataToLocalDb(payload: {
         }
       }
     }
+  }
+}
+
+export async function getSavedApiUrl(): Promise<string | null> {
+  const db = await getDatabase();
+  const rows = await db.getAllAsync<{ value: string }>(
+    `SELECT value FROM app_settings WHERE key = 'api_url' LIMIT 1`
+  );
+  return rows[0]?.value || null;
+}
+
+export async function saveCustomApiUrl(url: string | null): Promise<void> {
+  const db = await getDatabase();
+  if (!url || !url.trim()) {
+    await db.runAsync(`DELETE FROM app_settings WHERE key = 'api_url'`);
+  } else {
+    await db.runAsync(
+      `INSERT INTO app_settings (key, value) VALUES ('api_url', ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      url.trim()
+    );
   }
 }
