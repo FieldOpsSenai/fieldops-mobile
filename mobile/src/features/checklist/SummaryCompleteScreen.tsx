@@ -63,11 +63,13 @@ export const SummaryCompleteScreen: React.FC<SummaryCompleteScreenProps> = ({
     (i) => !i.answer?.observation || i.answer.observation.trim() === ''
   );
 
-  // RN-039 / RN-055: Não conformidade crítica exige evidência fotográfica
-  const missingCriticalEvidence = nonConformItems.filter(
+  // RN-039 / RN-055: Não conformidade crítica ou item com evidência obrigatória exige foto
+  const missingCriticalEvidence = items.filter(
     (i) =>
-      (i.answer?.criticality === 'CRITICAL' || i.answer?.criticality === 'HIGH') &&
-      i.evidences.length === 0
+      i.evidences.length === 0 &&
+      (i.evidence_required === 1 ||
+        ((i.answer?.is_non_conform === 1 || i.answer?.value === 'NON_CONFORM') &&
+          (i.answer?.criticality === 'CRITICAL' || i.answer?.criticality === 'HIGH')))
   );
 
   const isReadOnly =

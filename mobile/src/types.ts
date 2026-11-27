@@ -68,6 +68,7 @@ export interface InspectionItem {
   response_type: ResponseType;
   options_json?: string | null; // ex: '["Alta", "Média", "Baixa"]'
   required: number; // 1 or 0
+  evidence_required?: number; // 1 or 0
   order_index: number;
 }
 

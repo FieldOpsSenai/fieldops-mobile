@@ -70,13 +70,14 @@ export const InspectionDetailScreen: React.FC<InspectionDetailScreenProps> = ({
     }
   };
 
-  const handleStartWithGps = async () => {
+  const handleStartWithGps = async (scannedQrCode?: string) => {
     try {
       setLoadingGps(true);
 
       // Coleta pontual de coordenadas GPS conforme RN-013 / Seção 13.7
       let lat: number | null = null;
       let lon: number | null = null;
+      let acc: number | null = null;
 
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
@@ -86,12 +87,13 @@ export const InspectionDetailScreen: React.FC<InspectionDetailScreenProps> = ({
           });
           lat = loc.coords.latitude;
           lon = loc.coords.longitude;
+          acc = loc.coords.accuracy ?? null;
         }
       } catch (locErr) {
         console.log('GPS indisponível no momento:', locErr);
       }
 
-      await startInspection(inspection.id, lat, lon);
+      await startInspection(inspection.id, lat, lon, acc, scannedQrCode);
       const updated = await getInspectionById(inspection.id);
 
       if (updated) {
@@ -107,7 +109,7 @@ export const InspectionDetailScreen: React.FC<InspectionDetailScreenProps> = ({
 
   const handleScanSuccess = async (scannedCode: string) => {
     setScannerVisible(false);
-    await handleStartWithGps();
+    await handleStartWithGps(scannedCode);
   };
 
   return (

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,7 +14,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../theme';
 import { User } from '../../types';
 import { authenticateUser, upsertOfflineUser, saveAuthSession } from '../../database';
-import { loginWithApi } from '../../api';
+import {
+  loginWithApi,
+  getApiUrl,
+  updateApiUrl,
+  DEFAULT_API_URL,
+} from '../../api';
 import { pullServerData } from '../../sync';
 
 interface LoginScreenProps {
@@ -22,10 +27,35 @@ interface LoginScreenProps {
 }
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
-  const [email, setEmail] = useState('tecnico@fieldops.com');
-  const [password, setPassword] = useState('123456');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showServerConfig, setShowServerConfig] = useState(false);
+  const [serverUrlInput, setServerUrlInput] = useState(getApiUrl());
+  const [activeServerUrl, setActiveServerUrl] = useState(getApiUrl());
+
+  useEffect(() => {
+    const current = getApiUrl();
+    setActiveServerUrl(current);
+    setServerUrlInput(current);
+  }, []);
+
+  const handleSaveServerUrl = async () => {
+    const updated = await updateApiUrl(serverUrlInput);
+    setActiveServerUrl(updated);
+    setServerUrlInput(updated);
+    setShowServerConfig(false);
+    setErrorMessage(null);
+  };
+
+  const handleResetServerUrl = async () => {
+    const updated = await updateApiUrl(null);
+    setActiveServerUrl(updated);
+    setServerUrlInput(updated);
+    setShowServerConfig(false);
+    setErrorMessage(null);
+  };
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
@@ -152,8 +182,58 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
           )}
         </TouchableOpacity>
 
+        {/* Server URL Config (discreto para troca rápida de IP AWS) */}
+        <TouchableOpacity
+          style={styles.serverToggleBtn}
+          onPress={() => setShowServerConfig((prev) => !prev)}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="server-outline" size={14} color={colors.textSecondary} />
+          <Text style={styles.serverToggleText} numberOfLines={1}>
+            API: {activeServerUrl.replace(/^https?:\/\//i, '')}
+          </Text>
+          <Ionicons
+            name={showServerConfig ? 'chevron-up' : 'create-outline'}
+            size={14}
+            color={colors.primary}
+          />
+        </TouchableOpacity>
+
+        {showServerConfig && (
+          <View style={styles.serverConfigBox}>
+            <Text style={styles.serverConfigLabel}>URL da API (AWS / Local)</Text>
+            <View style={styles.inputBox}>
+              <Ionicons name="globe-outline" size={18} color={colors.textSecondary} />
+              <TextInput
+                style={styles.textInput}
+                placeholder={DEFAULT_API_URL}
+                placeholderTextColor={colors.textMuted}
+                value={serverUrlInput}
+                onChangeText={setServerUrlInput}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="url"
+              />
+            </View>
+            <View style={styles.serverConfigActions}>
+              <TouchableOpacity
+                style={styles.serverResetBtn}
+                onPress={handleResetServerUrl}
+              >
+                <Text style={styles.serverResetBtnText}>Padrão</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.serverSaveBtn}
+                onPress={handleSaveServerUrl}
+              >
+                <Text style={styles.serverSaveBtnText}>Salvar IP</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
         {/* Footer Build Info */}
-        <Text style={styles.versionText}>Versão 2.4.1 (Build 890)</Text>
+        <Text style={styles.versionText}>FieldOps Mobile v1.0.0</Text>
       </View>
     </KeyboardAvoidingView>
   );
@@ -282,6 +362,63 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.textSecondary,
     textAlign: 'center',
+  },
+  serverToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    marginBottom: 10,
+  },
+  serverToggleText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    maxWidth: 230,
+  },
+  serverConfigBox: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 6,
+    padding: 12,
+    marginBottom: 14,
+  },
+  serverConfigLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 6,
+  },
+  serverConfigActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+    marginTop: 10,
+  },
+  serverResetBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    backgroundColor: '#FFFFFF',
+  },
+  serverResetBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  serverSaveBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 4,
+    backgroundColor: colors.primary,
+  },
+  serverSaveBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });
 
