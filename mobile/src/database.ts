@@ -9,6 +9,7 @@ import {
   OutboxEventType,
   ChecklistItemWithAnswer,
   CriticalityLevel,
+  PriorityLevel,
   User,
 } from './types';
 
@@ -63,6 +64,7 @@ export async function initDatabase() {
       response_type TEXT NOT NULL,
       options_json TEXT,
       required INTEGER NOT NULL DEFAULT 1,
+      evidence_required INTEGER NOT NULL DEFAULT 0,
       order_index INTEGER NOT NULL DEFAULT 0,
       FOREIGN KEY (inspection_id) REFERENCES inspections(id) ON DELETE CASCADE
     );
@@ -108,8 +110,8 @@ export async function initDatabase() {
       id TEXT PRIMARY KEY NOT NULL,
       email TEXT NOT NULL,
       senha TEXT NOT NULL,
-      nome TEXT NOT NULL DEFAULT 'Hamilton',
-      perfil TEXT NOT NULL DEFAULT 'TECHNICIAN'
+      nome TEXT NOT NULL,
+      perfil TEXT NOT NULL DEFAULT 'TECNICO'
     );
 
     CREATE TABLE IF NOT EXISTS auth_session (
@@ -131,9 +133,7 @@ export async function initDatabase() {
 
   try {
     await db.execAsync(`ALTER TABLE inspection_answers ADD COLUMN criticality TEXT;`);
-  } catch {
-    // Coluna criticality já existe no banco local
-  }
+  } catch {}
 
   try {
     await db.execAsync(`ALTER TABLE inspections ADD COLUMN start_accuracy REAL;`);
@@ -147,332 +147,22 @@ export async function initDatabase() {
     await db.execAsync(`ALTER TABLE inspections ADD COLUMN rejection_reason TEXT;`);
   } catch {}
 
-  await seedDatabaseIfEmpty(db);
-}
-
-async function seedDatabaseIfEmpty(db: SQLite.SQLiteDatabase) {
-  // Usuário padrão do Técnico (compatível com seed da API e modo offline)
-  const usersCheck = await db.getAllAsync<{ count: number }>(
-    `SELECT count(*) as count FROM usuarios WHERE email = 'tecnico@fieldops.com'`
-  );
-  if (!usersCheck[0] || usersCheck[0].count === 0) {
-    await db.runAsync(
-      `INSERT INTO usuarios (id, email, senha, nome, perfil)
-       VALUES (?, ?, ?, ?, ?)`,
-      '2',
-      'tecnico@fieldops.com',
-      '123456',
-      'Hamilton',
-      'TECNICO'
+  try {
+    await db.execAsync(
+      `ALTER TABLE inspection_items ADD COLUMN evidence_required INTEGER NOT NULL DEFAULT 0;`
     );
-  } else {
-    await db.runAsync(
-      `UPDATE usuarios SET nome = 'Hamilton' WHERE LOWER(email) = 'tecnico@fieldops.com'`
-    );
-    await db.runAsync(
-      `UPDATE auth_session SET name = 'Hamilton' WHERE LOWER(email) = 'tecnico@fieldops.com'`
-    );
-  }
+  } catch {}
 
-  const adminCheck = await db.getAllAsync<{ count: number }>(
-    `SELECT count(*) as count FROM usuarios WHERE email = 'admin@fieldops.com'`
-  );
-  if (!adminCheck[0] || adminCheck[0].count === 0) {
-    await db.runAsync(
-      `INSERT INTO usuarios (id, email, senha, nome, perfil)
-       VALUES (?, ?, ?, ?, ?)`,
-      '1',
-      'admin@fieldops.com',
-      '123456',
-      'Admin',
-      'ADMINISTRADOR'
-    );
-  }
-
-  // Verifica se já existem inspeções
-  const inspCheck = await db.getAllAsync<{ count: number }>(
-    `SELECT count(*) as count FROM inspections`
-  );
-
-  if (inspCheck[0] && inspCheck[0].count > 0) {
-    return; // Já populado
-  }
-
-  // Inspeção 1: Em andamento (Alta prioridade)
-  const insp1Id = 'insp-8822b-uuid';
-  await db.runAsync(
-    `INSERT INTO inspections (
-      id, code, title, client_name, location_name,
-      equipment_id, equipment_name, equipment_qr_code,
-      status, priority, scheduled_date,
-      assigned_tech_id, assigned_tech_name, notes, sync_status
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    insp1Id,
-    '#INSP-8822B',
-    'Industrial Pipeline Inspection',
-    'Apex Industrial Corp',
-    'Sector 4, Main Refinery Complex',
-    'EQ-V102',
-    'Válvula Reguladora de Pressão V-102',
-    'EQ-VALVE-102',
-    'IN_PROGRESS',
-    'HIGH',
-    'Hoje, 08:00 - 10:30',
-    'usr-tech-001',
-    'Hamilton',
-    'Verificar estanqueidade, vibração anormal e pressão do manômetro.',
-    'PENDING'
-  );
-
-  // Itens dinâmicos para a Inspeção 1 com todos os tipos suportados
-  const items1 = [
-    {
-      id: 'item-8822b-1',
-      section: '1. Integridade Física e Fixação',
-      title: 'Integridade visual da carcaça e suportes',
-      desc: 'Verificar se existem trincas, deformações ou corrosão severa.',
-      type: 'CONFORMITY',
-      options: null,
-      req: 1,
-      order: 1,
-    },
-    {
-      id: 'item-8822b-2',
-      section: '1. Integridade Física e Fixação',
-      title: 'Número de patrimônio legível na placa',
-      desc: 'Conferir se o tag metálico confere com o sistema.',
-      type: 'BOOLEAN',
-      options: null,
-      req: 1,
-      order: 2,
-    },
-    {
-      id: 'item-8822b-3',
-      section: '2. Parâmetros Operacionais',
-      title: 'Pressão da linha no manômetro (PSI)',
-      desc: 'Faixa aceitável entre 45 e 60 PSI.',
-      type: 'NUMBER',
-      options: null,
-      req: 1,
-      order: 3,
-    },
-    {
-      id: 'item-8822b-4',
-      section: '2. Parâmetros Operacionais',
-      title: 'Estado de lubrificação das gaxetas',
-      desc: 'Classificar conforme padrão visual de manutenção.',
-      type: 'SINGLE_CHOICE',
-      options: JSON.stringify(['Excelente', 'Adequado', 'Necessita Troca']),
-      req: 1,
-      order: 4,
-    },
-    {
-      id: 'item-8822b-5',
-      section: '3. Evidências e Finalização',
-      title: 'Data do último teste hidrostático',
-      desc: 'Conforme selo do certificado de inspeção.',
-      type: 'DATE',
-      options: null,
-      req: 0,
-      order: 5,
-    },
-    {
-      id: 'item-8822b-6',
-      section: '3. Evidências e Finalização',
-      title: 'Observações técnicas detalhadas',
-      desc: 'Registrar anomalias térmicas, ruídos ou recomendações.',
-      type: 'TEXT_LONG',
-      options: null,
-      req: 0,
-      order: 6,
-    },
-  ];
-
-  for (const item of items1) {
-    await db.runAsync(
-      `INSERT INTO inspection_items (
-        id, inspection_id, section_name, title, description,
-        response_type, options_json, required, order_index
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      item.id,
-      insp1Id,
-      item.section,
-      item.title,
-      item.desc,
-      item.type,
-      item.options,
-      item.req,
-      item.order
-    );
-  }
-
-  // Resposta inicial de exemplo para o item 1 (Conforme)
-  await db.runAsync(
-    `INSERT INTO inspection_answers (
-      id, inspection_id, item_id, value, observation, is_non_conform, answered_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    Crypto.randomUUID(),
-    insp1Id,
-    'item-8822b-1',
-    'CONFORM',
-    'Sem trincas na estrutura principal.',
-    0,
-    new Date().toISOString()
-  );
-
-  // Inspeção 2: Agendada (Média prioridade)
-  const insp2Id = 'insp-8821a-uuid';
-  await db.runAsync(
-    `INSERT INTO inspections (
-      id, code, title, client_name, location_name,
-      equipment_id, equipment_name, equipment_qr_code,
-      status, priority, scheduled_date,
-      assigned_tech_id, assigned_tech_name, notes, sync_status
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    insp2Id,
-    '#INSP-8821A',
-    'HVAC Routine Check & Filter Audit',
-    'Global Logistics Hub',
-    'Warehouse B, Roof Access',
-    'EQ-HVAC-04',
-    'Chiller Central de Refrigeração Ch-4',
-    'EQ-HVAC-04',
-    'SCHEDULED',
-    'MEDIUM',
-    'Hoje, 11:00 - 12:30',
-    'usr-tech-001',
-    'Hamilton',
-    'Inspeção preventiva semestral nos trocadores de calor.',
-    'SYNCED'
-  );
-
-  const items2 = [
-    {
-      id: 'item-8821a-1',
-      section: '1. Filtros e Serpentinas',
-      title: 'Condição dos filtros de ar G4/F7',
-      desc: 'Avaliar saturação por poeira ou resíduos.',
-      type: 'CONFORMITY',
-      options: null,
-      req: 1,
-      order: 1,
-    },
-    {
-      id: 'item-8821a-2',
-      section: '1. Filtros e Serpentinas',
-      title: 'Temperatura de saída da água gelada (°C)',
-      desc: 'Faixa operacional nominal entre 6°C e 9°C.',
-      type: 'NUMBER',
-      options: null,
-      req: 1,
-      order: 2,
-    },
-    {
-      id: 'item-8821a-3',
-      section: '2. Motores e Correias',
-      title: 'Tensão da correia de transmissão',
-      desc: 'Verificar alinhamento e tensão.',
-      type: 'BOOLEAN',
-      options: null,
-      req: 1,
-      order: 3,
-    },
-    {
-      id: 'item-8821a-4',
-      section: '2. Motores e Correias',
-      title: 'Observação do painel elétrico',
-      desc: 'Registrar caso haja disjuntor com aquecimento.',
-      type: 'TEXT_SHORT',
-      options: null,
-      req: 0,
-      order: 4,
-    },
-  ];
-
-  for (const item of items2) {
-    await db.runAsync(
-      `INSERT INTO inspection_items (
-        id, inspection_id, section_name, title, description,
-        response_type, options_json, required, order_index
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      item.id,
-      insp2Id,
-      item.section,
-      item.title,
-      item.desc,
-      item.type,
-      item.options,
-      item.req,
-      item.order
-    );
-  }
-
-  // Inspeção 3: Agendada para o período da tarde
-  const insp3Id = 'insp-8825d-uuid';
-  await db.runAsync(
-    `INSERT INTO inspections (
-      id, code, title, client_name, location_name,
-      equipment_id, equipment_name, equipment_qr_code,
-      status, priority, scheduled_date,
-      assigned_tech_id, assigned_tech_name, notes, sync_status
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    insp3Id,
-    '#INSP-8825D',
-    'Safety Equipment & Valves Audit',
-    'Stark Energy Plant',
-    'Grid Alpha, Northern Sector',
-    'EQ-STRK-01',
-    'Gerador de Emergência G-01',
-    'EQ-STRK-01',
-    'SCHEDULED',
-    'LOW',
-    'Hoje, 14:00 - 16:00',
-    'usr-tech-001',
-    'Hamilton',
-    'Checagem de nível de óleo e carga das baterias de partida.',
-    'SYNCED'
-  );
-
-  const items3 = [
-    {
-      id: 'item-8825d-1',
-      section: '1. Sistema de Partida',
-      title: 'Tensão das baterias de partida (Vdc)',
-      desc: 'Deve indicar no mínimo 24Vdc em repouso.',
-      type: 'NUMBER',
-      options: null,
-      req: 1,
-      order: 1,
-    },
-    {
-      id: 'item-8825d-2',
-      section: '1. Sistema de Partida',
-      title: 'Nível do óleo lubrificante no cárter',
-      desc: 'Dentro das marcas de mínimo e máximo.',
-      type: 'CONFORMITY',
-      options: null,
-      req: 1,
-      order: 2,
-    },
-  ];
-
-  for (const item of items3) {
-    await db.runAsync(
-      `INSERT INTO inspection_items (
-        id, inspection_id, section_name, title, description,
-        response_type, options_json, required, order_index
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      item.id,
-      insp3Id,
-      item.section,
-      item.title,
-      item.desc,
-      item.type,
-      item.options,
-      item.req,
-      item.order
-    );
-  }
+  // Remove quaisquer dados fictícios de versões anteriores caso o app tenha sido atualizado por cima
+  try {
+    await db.execAsync(`
+      DELETE FROM inspection_answers WHERE inspection_id IN ('insp-8822b-uuid', 'insp-8821a-uuid', 'insp-8825d-uuid');
+      DELETE FROM evidence_photos WHERE inspection_id IN ('insp-8822b-uuid', 'insp-8821a-uuid', 'insp-8825d-uuid');
+      DELETE FROM inspection_items WHERE inspection_id IN ('insp-8822b-uuid', 'insp-8821a-uuid', 'insp-8825d-uuid');
+      DELETE FROM inspections WHERE id IN ('insp-8822b-uuid', 'insp-8821a-uuid', 'insp-8825d-uuid');
+      DELETE FROM sync_outbox WHERE entity_id IN ('insp-8822b-uuid', 'insp-8821a-uuid', 'insp-8825d-uuid') OR payload_json LIKE '%insp-882%';
+    `);
+  } catch {}
 }
 
 // -------------------------------------------------------------
@@ -512,7 +202,7 @@ export async function getInspections(
       const mm = String(now.getMonth() + 1).padStart(2, '0');
       const yyyy = now.getFullYear();
       const todayStr = `%${dd}/${mm}/${yyyy}%`;
-      query += ` AND (scheduled_date LIKE '%Hoje%' OR scheduled_date LIKE ?)`;
+      query += ` AND scheduled_date LIKE ?`;
       params.push(todayStr);
     } else {
       query += ` AND scheduled_date LIKE ?`;
@@ -521,6 +211,7 @@ export async function getInspections(
   }
 
   query += ` ORDER BY CASE status 
+    WHEN 'REJECTED' THEN 0
     WHEN 'IN_PROGRESS' THEN 1 
     WHEN 'SCHEDULED' THEN 2 
     WHEN 'COMPLETED' THEN 3 
@@ -542,7 +233,9 @@ export async function getInspectionById(id: string): Promise<Inspection | null> 
   return rows[0] || null;
 }
 
-export async function getChecklistWithAnswers(inspectionId: string): Promise<ChecklistItemWithAnswer[]> {
+export async function getChecklistWithAnswers(
+  inspectionId: string
+): Promise<ChecklistItemWithAnswer[]> {
   const db = await getDatabase();
 
   const items = await db.getAllAsync<InspectionItem>(
@@ -588,7 +281,6 @@ export async function saveAnswer(params: {
     ? params.criticality || 'MEDIUM'
     : null;
 
-  // UPSERT
   await db.runAsync(
     `INSERT INTO inspection_answers (
       id, inspection_id, item_id, value, observation, is_non_conform, criticality, answered_at
@@ -609,22 +301,16 @@ export async function saveAnswer(params: {
     now
   );
 
-  // Enfileira evento na outbox
-  await queueOutboxEvent(
-    'SAVE_ANSWER',
-    answerId,
-    {
-      inspectionId: params.inspectionId,
-      itemId: params.itemId,
-      value: params.value,
-      observation: params.observation,
-      isNonConform: params.isNonConform,
-      criticality: resolvedCriticality,
-      answeredAt: now,
-    }
-  );
+  await queueOutboxEvent('SAVE_ANSWER', answerId, {
+    inspectionId: params.inspectionId,
+    itemId: params.itemId,
+    value: params.value,
+    observation: params.observation,
+    isNonConform: params.isNonConform,
+    criticality: resolvedCriticality,
+    answeredAt: now,
+  });
 
-  // Marca inspeção com alteração pendente
   await db.runAsync(
     `UPDATE inspections SET sync_status = 'PENDING' WHERE id = ?`,
     params.inspectionId
@@ -664,18 +350,14 @@ export async function addEvidencePhoto(params: {
     now
   );
 
-  await queueOutboxEvent(
-    'ATTACH_EVIDENCE',
+  await queueOutboxEvent('ATTACH_EVIDENCE', photoId, {
     photoId,
-    {
-      photoId,
-      inspectionId: params.inspectionId,
-      itemId: params.itemId,
-      fileUri: params.fileUri,
-      description: params.description,
-      createdAt: now,
-    }
-  );
+    inspectionId: params.inspectionId,
+    itemId: params.itemId,
+    fileUri: params.fileUri,
+    description: params.description,
+    createdAt: now,
+  });
 
   await db.runAsync(
     `UPDATE inspections SET sync_status = 'PENDING' WHERE id = ?`,
@@ -697,7 +379,8 @@ export async function startInspection(
   inspectionId: string,
   latitude?: number | null,
   longitude?: number | null,
-  accuracy?: number | null
+  accuracy?: number | null,
+  scannedQrCode?: string | null
 ) {
   const db = await getDatabase();
   const now = new Date().toISOString();
@@ -724,6 +407,7 @@ export async function startInspection(
     latitude,
     longitude,
     accuracy,
+    scannedQrCode: scannedQrCode || null,
   });
 }
 
@@ -743,6 +427,7 @@ export async function completeInspection(
          end_latitude = ?, 
          end_longitude = ?,
          end_accuracy = ?,
+         rejection_reason = NULL,
          sync_status = 'PENDING'
      WHERE id = ?`,
     now,
@@ -849,18 +534,18 @@ export async function authenticateUser(email: string, pass: string): Promise<Use
   const cleanEmail = email.trim();
   const cleanPass = pass.trim();
 
-  // Permite tanto a senha padrão do backend (123456) quanto a senha antiga do seed local (fieldops123)
-  const rows = await db.getAllAsync<{ id: string; email: string; nome: string; perfil: string; senha: string }>(
+  const rows = await db.getAllAsync<{
+    id: string;
+    email: string;
+    nome: string;
+    perfil: string;
+    senha: string;
+  }>(
     `SELECT id, email, nome, perfil, senha FROM usuarios WHERE LOWER(email) = LOWER(?)`,
     cleanEmail
   );
 
-  const matched = rows.find(
-    (r) =>
-      r.senha === cleanPass ||
-      (cleanEmail.toLowerCase() === 'tecnico@fieldops.com' &&
-        (cleanPass === '123456' || cleanPass === 'fieldops123'))
-  );
+  const matched = rows.find((r) => r.senha === cleanPass);
 
   if (matched) {
     return {
@@ -900,12 +585,12 @@ export async function upsertOfflineUser(user: User, password?: string) {
         user.email.trim()
       );
     }
-  } else {
+  } else if (password) {
     await db.runAsync(
       `INSERT INTO usuarios (id, email, senha, nome, perfil) VALUES (?, ?, ?, ?, ?)`,
       user.id,
       user.email.trim(),
-      password || '123456',
+      password,
       user.name,
       user.role
     );
@@ -963,7 +648,9 @@ export async function clearAuthSession() {
   await db.runAsync(`DELETE FROM auth_session WHERE id = 1`);
 }
 
-export async function getAnswersForInspection(inspectionId: string): Promise<InspectionAnswer[]> {
+export async function getAnswersForInspection(
+  inspectionId: string
+): Promise<InspectionAnswer[]> {
   const db = await getDatabase();
   return db.getAllAsync<InspectionAnswer>(
     `SELECT * FROM inspection_answers WHERE inspection_id = ?`,
@@ -983,7 +670,17 @@ export async function markInspectionSynced(inspectionId: string) {
   );
 }
 
-function mapServerStatusToLocal(serverStatus?: string): Inspection['status'] {
+function mapServerStatusToLocal(
+  serverStatus?: string,
+  revisaoAprovada?: boolean | null
+): Inspection['status'] {
+  if (revisaoAprovada === true) {
+    return 'APPROVED';
+  }
+  if (revisaoAprovada === false) {
+    return 'REJECTED';
+  }
+
   switch ((serverStatus || '').toUpperCase()) {
     case 'EM_ANDAMENTO':
     case 'IN_PROGRESS':
@@ -1004,6 +701,7 @@ function mapServerStatusToLocal(serverStatus?: string): Inspection['status'] {
     case 'CANCELED':
     case 'FAILED':
       return 'FAILED';
+    case 'AGENDADA':
     case 'PENDENTE':
     case 'ASSIGNED':
     case 'SCHEDULED':
@@ -1012,11 +710,31 @@ function mapServerStatusToLocal(serverStatus?: string): Inspection['status'] {
   }
 }
 
-function mapServerResponseTypeToLocal(tipoResposta?: string): InspectionItem['response_type'] {
+function mapServerPriorityToLocal(prioridade?: string | null): PriorityLevel {
+  switch ((prioridade || '').toUpperCase()) {
+    case 'BAIXA':
+    case 'LOW':
+      return 'LOW';
+    case 'ALTA':
+    case 'URGENTE':
+    case 'HIGH':
+      return 'HIGH';
+    case 'MEDIA':
+    case 'MEDIUM':
+    default:
+      return 'MEDIUM';
+  }
+}
+
+function mapServerResponseTypeToLocal(
+  tipoResposta?: string
+): InspectionItem['response_type'] {
   const raw = (tipoResposta || '').toUpperCase().trim();
-  if (raw.includes('BOOL') || raw === 'SIM_NAO') return 'BOOLEAN';
+  if (raw.includes('BOOL') || raw === 'SIM_NAO' || raw === 'YES_NO') return 'BOOLEAN';
   if (raw.includes('NUM')) return 'NUMBER';
-  if (raw.includes('CHOICE') || raw.includes('OPCOES') || raw.includes('MULTIPLA')) return 'SINGLE_CHOICE';
+  if (raw.includes('CHOICE') || raw.includes('OPCOES') || raw.includes('MULTIPLA')) {
+    return 'SINGLE_CHOICE';
+  }
   if (raw.includes('DATE') || raw.includes('DATA')) return 'DATE';
   if (raw.includes('LONG') || raw.includes('LONGO')) return 'TEXT_LONG';
   if (raw.includes('TEXT')) return 'TEXT_SHORT';
@@ -1024,7 +742,7 @@ function mapServerResponseTypeToLocal(tipoResposta?: string): InspectionItem['re
 }
 
 function formatServerDate(isoDate?: string | null): string {
-  if (!isoDate) return 'Hoje, 08:00 - 10:30';
+  if (!isoDate) return 'Data não informada';
   try {
     const dt = new Date(isoDate);
     if (isNaN(dt.getTime())) return String(isoDate);
@@ -1043,7 +761,8 @@ export async function syncServerDataToLocalDb(payload: {
   inspecoes: any[];
   equipamentos: any[];
   locais: any[];
-  modelosPublicados: any[];
+  modelosPublicados?: any[];
+  snapshotsByInspection?: Record<string, any[]>;
 }) {
   const db = await getDatabase();
 
@@ -1061,43 +780,67 @@ export async function syncServerDataToLocalDb(payload: {
     }
   }
 
-  const modelos = payload.modelosPublicados || [];
-  const defaultModelo = modelos[0] || null;
+  const modelosMap = new Map<number, any>();
+  for (const mod of payload.modelosPublicados || []) {
+    if (mod && mod.id != null) {
+      modelosMap.set(Number(mod.id), mod);
+    }
+  }
+
+  const snapshotsByInspection = payload.snapshotsByInspection || {};
 
   for (const srvInsp of payload.inspecoes || []) {
     if (!srvInsp || srvInsp.id == null) continue;
 
     const idStr = String(srvInsp.id);
     const code = `#INSP-${String(srvInsp.id).padStart(4, '0')}`;
-    const title = srvInsp.descricao || `Inspeção #${srvInsp.id}`;
+    const title =
+      srvInsp.descricao || srvInsp.modeloTitulo || `Inspeção #${srvInsp.id}`;
 
     const eqIdNum = Number(srvInsp.equipamentoId ?? srvInsp.equipamento?.id ?? 0);
     const eqObj = equipamentosMap.get(eqIdNum) || srvInsp.equipamento || {};
-    const equipmentId = eqObj.numeroSerie || (eqIdNum ? `EQ-${eqIdNum}` : 'EQ-001');
+    const equipmentId =
+      eqObj.numeroSerie || (eqIdNum ? String(eqIdNum) : idStr);
     const equipmentName =
-      srvInsp.equipamentoNome || eqObj.nome || 'Equipamento Industrial';
+      srvInsp.equipamentoNome || eqObj.nome || `Equipamento #${eqIdNum || idStr}`;
     const equipmentQrCode =
-      eqObj.qrCode || eqObj.numeroSerie || (eqIdNum ? `QR-${eqIdNum}` : `EQ-${idStr}`);
+      eqObj.qrCode || eqObj.numeroSerie || String(eqIdNum || idStr);
 
-    const locIdNum = Number(eqObj.localId ?? eqObj.local?.id ?? 0);
+    const locIdNum = Number(
+      srvInsp.localId ?? eqObj.localId ?? eqObj.local?.id ?? 0
+    );
     const locObj = locaisMap.get(locIdNum) || eqObj.local || {};
     const locationName =
+      srvInsp.localNome ||
       eqObj.localNome ||
       (locObj.nome
         ? `${locObj.nome}${locObj.endereco ? ` - ${locObj.endereco}` : ''}`
-        : 'Unidade Operacional');
+        : `Local #${locIdNum || idStr}`);
+
     const clientName =
-      locObj.clienteNome || locObj.cliente?.nome || 'Cliente Corporativo FieldOps';
+      srvInsp.clienteNome ||
+      locObj.clienteNome ||
+      locObj.cliente?.nome ||
+      'Cliente';
 
-    const assignedTechId = String(srvInsp.usuarioId ?? srvInsp.usuario?.id ?? '2');
+    const assignedTechId = String(
+      srvInsp.usuarioId ?? srvInsp.usuario?.id ?? ''
+    );
     const assignedTechName =
-      srvInsp.usuarioNome || srvInsp.usuario?.nome || 'Hamilton';
+      srvInsp.usuarioNome || srvInsp.usuario?.nome || 'Técnico';
 
-    const serverStatus = mapServerStatusToLocal(srvInsp.status);
+    const serverStatus = mapServerStatusToLocal(
+      srvInsp.status,
+      srvInsp.revisaoAprovada
+    );
+    const priority = mapServerPriorityToLocal(srvInsp.prioridade);
     const scheduledDate = formatServerDate(srvInsp.dataAgendada);
-    const notes = srvInsp.observacoes || null;
+    const notes = srvInsp.instrucoes || srvInsp.observacoes || null;
+    const rejectionReason =
+      srvInsp.revisaoAprovada === false
+        ? srvInsp.motivoReprovacao || null
+        : null;
 
-    // Verifica se já existe localmente com alterações pendentes na fila Outbox
     const existingRows = await db.getAllAsync<Inspection>(
       `SELECT * FROM inspections WHERE id = ?`,
       idStr
@@ -1116,10 +859,12 @@ export async function syncServerDataToLocalDb(payload: {
           equipment_name = ?,
           equipment_qr_code = ?,
           status = ?,
+          priority = ?,
           scheduled_date = ?,
           assigned_tech_id = ?,
           assigned_tech_name = ?,
-          notes = ?
+          notes = ?,
+          rejection_reason = ?
         WHERE id = ?`,
         code,
         title,
@@ -1129,10 +874,12 @@ export async function syncServerDataToLocalDb(payload: {
         equipmentName,
         equipmentQrCode,
         keepLocalStatus ? existing.status : serverStatus,
+        priority,
         scheduledDate,
         assignedTechId,
         assignedTechName,
         keepLocalStatus ? existing.notes : notes,
+        keepLocalStatus ? existing.rejection_reason ?? null : rejectionReason,
         idStr
       );
     } else {
@@ -1141,8 +888,8 @@ export async function syncServerDataToLocalDb(payload: {
           id, code, title, client_name, location_name,
           equipment_id, equipment_name, equipment_qr_code,
           status, priority, scheduled_date,
-          assigned_tech_id, assigned_tech_name, notes, sync_status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'SYNCED')`,
+          assigned_tech_id, assigned_tech_name, notes, rejection_reason, sync_status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'SYNCED')`,
         idStr,
         code,
         title,
@@ -1152,97 +899,106 @@ export async function syncServerDataToLocalDb(payload: {
         equipmentName,
         equipmentQrCode,
         serverStatus,
-        'HIGH',
+        priority,
         scheduledDate,
         assignedTechId,
         assignedTechName,
-        notes
+        notes,
+        rejectionReason
       );
     }
 
-    // Garante que a inspeção possua itens de checklist vinculados
-    const existingItems = await db.getAllAsync<{ count: number }>(
-      `SELECT count(*) as count FROM inspection_items WHERE inspection_id = ?`,
-      idStr
-    );
+    const snapItems = snapshotsByInspection[idStr] || [];
 
-    if (!existingItems[0] || existingItems[0].count === 0) {
-      let insertedFromModel = false;
+    if (snapItems.length > 0) {
+      // Se havia itens antigos fora do padrão -snap- e nenhuma resposta local pendente, substitui pelos itens reais do snapshot
+      if (!existing || existing.sync_status !== 'PENDING') {
+        const legacyCount = await db.getAllAsync<{ count: number }>(
+          `SELECT count(*) as count FROM inspection_items WHERE inspection_id = ? AND id NOT LIKE '%-snap-%'`,
+          idStr
+        );
+        if (legacyCount[0] && legacyCount[0].count > 0) {
+          await db.runAsync(
+            `DELETE FROM inspection_items WHERE inspection_id = ? AND id NOT LIKE '%-snap-%'`,
+            idStr
+          );
+        }
+      }
 
-      if (defaultModelo && Array.isArray(defaultModelo.secoes)) {
+      let orderCounter = 1;
+      for (const snap of snapItems) {
+        if (!snap || snap.id == null) continue;
+        const localItemId = `${idStr}-snap-${snap.id}`;
+        const descParts: string[] = [];
+        if (snap.critico) descParts.push('Item crítico.');
+        if (snap.evidenciaObrigatoria) {
+          descParts.push('Evidência fotográfica obrigatória.');
+        }
+
+        await db.runAsync(
+          `INSERT INTO inspection_items (
+            id, inspection_id, section_name, title, description,
+            response_type, options_json, required, evidence_required, order_index
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            section_name = excluded.section_name,
+            title = excluded.title,
+            description = excluded.description,
+            response_type = excluded.response_type,
+            required = excluded.required,
+            evidence_required = excluded.evidence_required,
+            order_index = excluded.order_index`,
+          localItemId,
+          idStr,
+          snap.secaoTitulo || 'Checklist',
+          snap.itemDescricao || 'Item de Verificação',
+          descParts.length > 0 ? descParts.join(' ') : null,
+          mapServerResponseTypeToLocal(snap.tipoResposta),
+          null,
+          snap.obrigatorio === false ? 0 : 1,
+          snap.evidenciaObrigatoria === true ? 1 : 0,
+          snap.ordem ?? orderCounter++
+        );
+      }
+    } else {
+      // Caso o endpoint de snapshot esteja vazio, tenta o modelo vinculado real da inspeção
+      const existingItems = await db.getAllAsync<{ count: number }>(
+        `SELECT count(*) as count FROM inspection_items WHERE inspection_id = ?`,
+        idStr
+      );
+      const modeloIdNum = Number(
+        srvInsp.modeloId ?? srvInsp.modeloInspecao?.id ?? 0
+      );
+      const modelo = modelosMap.get(modeloIdNum) || srvInsp.modeloInspecao;
+
+      if (
+        (!existingItems[0] || existingItems[0].count === 0) &&
+        modelo &&
+        Array.isArray(modelo.secoes)
+      ) {
         let orderCounter = 1;
-        for (const secao of defaultModelo.secoes) {
+        for (const secao of modelo.secoes) {
           const sectionTitle = secao.titulo || `Seção ${secao.ordem || 1}`;
           for (const item of secao.itens || []) {
-            const localItemId = item.id != null ? `${idStr}-item-${item.id}` : Crypto.randomUUID();
+            const localItemId =
+              item.id != null ? `${idStr}-item-${item.id}` : Crypto.randomUUID();
             await db.runAsync(
               `INSERT OR IGNORE INTO inspection_items (
                 id, inspection_id, section_name, title, description,
-                response_type, options_json, required, order_index
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                response_type, options_json, required, evidence_required, order_index
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               localItemId,
               idStr,
               sectionTitle,
               item.descricao || 'Item de Verificação',
-              item.critico ? 'Item crítico de segurança operacional.' : null,
+              item.critico ? 'Item crítico.' : null,
               mapServerResponseTypeToLocal(item.tipoResposta),
               null,
               item.obrigatorio === false ? 0 : 1,
+              item.evidenciaObrigatoria === true ? 1 : 0,
               item.ordem ?? orderCounter++
             );
-            insertedFromModel = true;
           }
-        }
-      }
-
-      if (!insertedFromModel) {
-        // Checklist padrão caso não haja modelo publicado no banco ainda
-        const fallbackItems = [
-          {
-            id: `${idStr}-item-1`,
-            section: '1. Verificação Geral e Segurança',
-            title: 'Condições físicas e integridade do equipamento',
-            desc: 'Verificar ausência de avarias, vazamentos ou ruídos anormais.',
-            type: 'CONFORMITY',
-            req: 1,
-            order: 1,
-          },
-          {
-            id: `${idStr}-item-2`,
-            section: '1. Verificação Geral e Segurança',
-            title: 'Sinalização e dispositivos de proteção ativos',
-            desc: 'Confirmar se o equipamento está devidamente identificado e seguro.',
-            type: 'BOOLEAN',
-            req: 1,
-            order: 2,
-          },
-          {
-            id: `${idStr}-item-3`,
-            section: '2. Parâmetros e Observações Finais',
-            title: 'Parecer técnico da vistoria',
-            desc: 'Descrever medições ou recomendações adicionais.',
-            type: 'TEXT_LONG',
-            req: 0,
-            order: 3,
-          },
-        ];
-
-        for (const fi of fallbackItems) {
-          await db.runAsync(
-            `INSERT OR IGNORE INTO inspection_items (
-              id, inspection_id, section_name, title, description,
-              response_type, options_json, required, order_index
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            fi.id,
-            idStr,
-            fi.section,
-            fi.title,
-            fi.desc,
-            fi.type,
-            null,
-            fi.req,
-            fi.order
-          );
         }
       }
     }
